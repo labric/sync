@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Labric Sync",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "identifier": "co.labric.sync",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -40,7 +40,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5NjZCNEM1RDI5MzI0QTkKUldTcEpKUFN4YlJtS2VIQUNiQ3U5aER4U09Vemx3MWdiS3pkUmIwZkY1Qm1meGVxRHdncmFZMUEK",
       "endpoints": [
-        "https://github.com/Labric-Platforms/sync/releases/latest/download/latest.json"
+        "https://github.com/labric/sync/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
