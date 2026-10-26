@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import { FileChangeEvent, FileUploadStatus } from "@/types";
 import { useUploadManager } from "@/hooks/useUploadManager";
 import { useSessionContext } from "@/hooks/use-session-context";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
@@ -152,6 +153,7 @@ const FileChangeRow = memo(function FileChangeRow({
 export default function Simple() {
   const { progress } = useUploadManager();
   const { isActive: sessionActive, timeRemaining: sessionTimeRemaining } = useSessionContext();
+  const appVersion = useAppVersion();
   const [selectedFolder, setSelectedFolder] = useState("");
   const [fileChanges, setFileChanges] = useState<FileChangeEvent[]>([]);
   // Removed isOnline state as it's no longer needed with Rust backend
@@ -530,15 +532,22 @@ export default function Simple() {
           </Tooltip>
         </div>
         <div className="flex items-center space-x-4">
-          <span className="flex items-center gap-2">
-            {(() => {
-              const pending = (progress?.total_queued ?? 0) + (progress?.in_flight ?? 0);
-              if (pending > 0) {
-                return <><Loader2 className="h-3 w-3 animate-spin" /><span>Syncing <span className="font-mono tabular-nums">{pending}</span> file{pending === 1 ? "" : "s"}</span></>;
-              }
-              return <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>;
-            })()}
-          </span>
+          <Tooltip>
+            <TooltipTrigger>
+              <span className="flex items-center gap-2">
+                {(() => {
+                  const pending = (progress?.total_queued ?? 0) + (progress?.in_flight ?? 0);
+                  if (pending > 0) {
+                    return <><Loader2 className="h-3 w-3 animate-spin" /><span>Syncing <span className="font-mono tabular-nums">{pending}</span> file{pending === 1 ? "" : "s"}</span></>;
+                  }
+                  return <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>;
+                })()}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent collisionPadding={8}>
+              {appVersion ? `Labric Sync v${appVersion}` : "Labric Sync"}
+            </TooltipContent>
+          </Tooltip>
           <SessionContextSheet>
             {sessionActive ? (
               <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent-foreground/10 text-accent-foreground text-xs">
