@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::http_client::{check_response, SharedHttpClient};
+use crate::WatchedFolderState;
 
 const SETTINGS_STORE_FILENAME: &str = "settings.json";
 
@@ -18,6 +19,7 @@ const OFFLINE_STATUS: &str = "offline";
 pub struct HeartbeatRequest {
     device_fingerprint: String,
     app_version: String,
+    is_watching: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -87,7 +89,10 @@ pub async fn start_heartbeat(
                 break;
             };
 
-            let result = make_heartbeat_request(&http_client, &config).await;
+            let is_watching = app_handle_clone
+                .try_state::<WatchedFolderState>()
+                .is_some_and(|folder| folder.lock().is_some());
+            let result = make_heartbeat_request(&http_client, &config, is_watching).await;
             let status = match result {
                 Ok(response) => {
                     log::info!("Heartbeat successful");
@@ -192,10 +197,12 @@ pub async fn stop_heartbeat(
 async fn make_heartbeat_request(
     client: &SharedHttpClient,
     config: &HeartbeatConfig,
+    is_watching: bool,
 ) -> Result<HeartbeatResponse, String> {
     let request_body = HeartbeatRequest {
         device_fingerprint: config.device_fingerprint.clone(),
         app_version: config.app_version.clone(),
+        is_watching,
     };
 
     log::info!("Making heartbeat request to: {}", config.url);
