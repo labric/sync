@@ -81,3 +81,19 @@ export async function getOrganizationId(): Promise<string | null> {
 export async function clearOrganizationId() {
   await store.delete(ORG_ID_KEY);
 }
+
+const INSTALLED_VERSION_KEY = "installedVersion";
+const INSTALLED_AT_KEY = "installedAt";
+
+// Returns when the given version was first seen running, recording now as
+// that time when the version differs from the last one recorded.
+export async function recordInstalledVersion(version: string): Promise<string> {
+  const installedVersion = await get<string | null>(INSTALLED_VERSION_KEY, null);
+  const installedAt = await get<string | null>(INSTALLED_AT_KEY, null);
+  if (installedVersion === version && installedAt) return installedAt;
+
+  const now = new Date().toISOString();
+  await set(INSTALLED_VERSION_KEY, version);
+  await set(INSTALLED_AT_KEY, now);
+  return now;
+}

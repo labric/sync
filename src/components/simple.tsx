@@ -545,7 +545,20 @@ export default function Simple() {
               </span>
             </TooltipTrigger>
             <TooltipContent collisionPadding={8}>
-              {appVersion ? `Labric Sync v${appVersion}` : "Labric Sync"}
+              <div className="flex flex-col">
+                <span>
+                  {appVersion ? `Labric Sync v${appVersion.version}` : "Labric Sync"}
+                </span>
+                {appVersion?.updatedAt && (
+                  <span>
+                    Updated{" "}
+                    {new Date(appVersion.updatedAt).toLocaleString(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </span>
+                )}
+              </div>
             </TooltipContent>
           </Tooltip>
           <SessionContextSheet>
