@@ -19,7 +19,7 @@ const OFFLINE_STATUS: &str = "offline";
 pub struct HeartbeatRequest {
     device_fingerprint: String,
     app_version: String,
-    watching_folder: bool,
+    is_watching: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -89,10 +89,10 @@ pub async fn start_heartbeat(
                 break;
             };
 
-            let watching_folder = app_handle_clone
+            let is_watching = app_handle_clone
                 .try_state::<WatchedFolderState>()
                 .is_some_and(|folder| folder.lock().is_some());
-            let result = make_heartbeat_request(&http_client, &config, watching_folder).await;
+            let result = make_heartbeat_request(&http_client, &config, is_watching).await;
             let status = match result {
                 Ok(response) => {
                     log::info!("Heartbeat successful");
@@ -197,12 +197,12 @@ pub async fn stop_heartbeat(
 async fn make_heartbeat_request(
     client: &SharedHttpClient,
     config: &HeartbeatConfig,
-    watching_folder: bool,
+    is_watching: bool,
 ) -> Result<HeartbeatResponse, String> {
     let request_body = HeartbeatRequest {
         device_fingerprint: config.device_fingerprint.clone(),
         app_version: config.app_version.clone(),
-        watching_folder,
+        is_watching,
     };
 
     log::info!("Making heartbeat request to: {}", config.url);
