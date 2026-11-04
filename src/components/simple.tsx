@@ -499,8 +499,8 @@ export default function Simple() {
                 ></div>
                 <span>
                   {heartbeatStatus?.status?.status === "online"
-                    ? "Connected"
-                    : "Disconnected"}
+                    ? "Online"
+                    : "Offline"}
                 </span>
               </div>
             </TooltipTrigger>
