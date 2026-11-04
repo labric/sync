@@ -326,7 +326,10 @@ mod tests {
         let live = Arc::new(AtomicUsize::new(0));
         // Counts starts that have reached the spawn step. Each start waits briefly
         // for the other one to get there too, so the test sees what happens when both
-        // starts are between their stop and storing the new task handle.
+        // starts are between their stop and storing the new task handle. The wait is a
+        // blocking spin on purpose: `spawn_loop` is a sync closure, and with the fix it
+        // runs while the task lock is held, so the other start waits on the lock and
+        // the first one times out after 300ms instead.
         let at_spawn = Arc::new(AtomicUsize::new(0));
 
         let start = |live: Arc<AtomicUsize>, at_spawn: Arc<AtomicUsize>| {
