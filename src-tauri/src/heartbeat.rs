@@ -51,6 +51,7 @@ pub type HeartbeatState = Arc<Mutex<Option<HeartbeatConfig>>>;
 pub type HeartbeatStatusState = Arc<Mutex<HeartbeatStatus>>;
 pub type HeartbeatTaskState = Arc<Mutex<Option<JoinHandle<()>>>>;
 
+/// Stops any running heartbeat loop and starts a new one.
 pub async fn start_heartbeat(
     config: HeartbeatConfig,
     http_client: SharedHttpClient,
@@ -59,23 +60,39 @@ pub async fn start_heartbeat(
     task_state: HeartbeatTaskState,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    stop_heartbeat(
-        heartbeat_state.clone(),
-        status_state.clone(),
-        task_state.clone(),
-    )
-    .await?;
+    let (loop_config, loop_status) = (heartbeat_state.clone(), status_state.clone());
+    replace_heartbeat_task(config, &heartbeat_state, &status_state, &task_state, || {
+        spawn_heartbeat_loop(http_client, loop_config, loop_status, app_handle)
+    })
+    .await;
+    Ok(())
+}
 
-    {
-        let mut state = heartbeat_state.lock().await;
-        *state = Some(config.clone());
-    }
+/// The task lock is held from the abort until the new handle is stored. If it
+/// were released in between, two overlapping starts (React StrictMode runs the
+/// `useHeartbeat` effect twice in dev) could both find no task to abort, both
+/// spawn, and the second store would overwrite the first handle, leaving that
+/// loop running with nothing able to abort it.
+async fn replace_heartbeat_task(
+    config: HeartbeatConfig,
+    heartbeat_state: &HeartbeatState,
+    status_state: &HeartbeatStatusState,
+    task_state: &HeartbeatTaskState,
+    spawn_loop: impl FnOnce() -> JoinHandle<()>,
+) {
+    let mut task = task_state.lock().await;
+    clear_heartbeat(&mut task, heartbeat_state, status_state).await;
+    *heartbeat_state.lock().await = Some(config);
+    *task = Some(spawn_loop());
+}
 
-    let heartbeat_state_clone = heartbeat_state.clone();
-    let status_state_clone = status_state.clone();
-    let app_handle_clone = app_handle.clone();
-
-    let task_handle = tokio::spawn(async move {
+fn spawn_heartbeat_loop(
+    http_client: SharedHttpClient,
+    heartbeat_state_clone: HeartbeatState,
+    status_state_clone: HeartbeatStatusState,
+    app_handle_clone: AppHandle,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
         let mut interval = interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -153,14 +170,7 @@ pub async fn start_heartbeat(
 
             interval.tick().await;
         }
-    });
-
-    {
-        let mut task = task_state.lock().await;
-        *task = Some(task_handle);
-    }
-
-    Ok(())
+    })
 }
 
 pub async fn stop_heartbeat(
@@ -168,12 +178,22 @@ pub async fn stop_heartbeat(
     status_state: HeartbeatStatusState,
     task_state: HeartbeatTaskState,
 ) -> Result<(), String> {
-    {
-        let mut task = task_state.lock().await;
-        if let Some(handle) = task.take() {
-            handle.abort();
-            log::info!("Previous heartbeat task cancelled");
-        }
+    let mut task = task_state.lock().await;
+    clear_heartbeat(&mut task, &heartbeat_state, &status_state).await;
+    log::info!("Heartbeat stopped");
+    Ok(())
+}
+
+/// Aborts the running loop, if any, and clears the config and status.
+/// The caller must hold the task lock.
+async fn clear_heartbeat(
+    task: &mut Option<JoinHandle<()>>,
+    heartbeat_state: &HeartbeatState,
+    status_state: &HeartbeatStatusState,
+) {
+    if let Some(handle) = task.take() {
+        handle.abort();
+        log::info!("Previous heartbeat task cancelled");
     }
 
     {
@@ -189,9 +209,6 @@ pub async fn stop_heartbeat(
             error: None,
         };
     }
-
-    log::info!("Heartbeat stopped");
-    Ok(())
 }
 
 async fn make_heartbeat_request(
@@ -236,12 +253,7 @@ pub async fn update_heartbeat_config(
     task_state: HeartbeatTaskState,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    stop_heartbeat(
-        heartbeat_state.clone(),
-        status_state.clone(),
-        task_state.clone(),
-    )
-    .await?;
+    // start_heartbeat replaces the running loop itself.
     start_heartbeat(
         new_config,
         http_client,
@@ -251,4 +263,70 @@ pub async fn update_heartbeat_config(
         app_handle,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> HeartbeatConfig {
+        HeartbeatConfig {
+            url: "http://localhost/api/sync/heartbeat".to_string(),
+            token: "token".to_string(),
+            device_fingerprint: "fingerprint".to_string(),
+            app_version: "0.0.0".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn start_spawns_the_loop_while_holding_the_task_lock() {
+        let heartbeat_state: HeartbeatState = Arc::new(Mutex::new(None));
+        let status_state: HeartbeatStatusState = Arc::new(Mutex::new(HeartbeatStatus {
+            status: None,
+            is_loading: false,
+            error: None,
+        }));
+        let task_state: HeartbeatTaskState = Arc::new(Mutex::new(None));
+
+        // If the lock is free at spawn time, an overlapping start can slip in
+        // between the abort and the store and orphan a loop.
+        let spawn_loop = || {
+            assert!(
+                task_state.try_lock().is_err(),
+                "task lock released before spawn"
+            );
+            tokio::spawn(std::future::pending::<()>())
+        };
+
+        replace_heartbeat_task(
+            test_config(),
+            &heartbeat_state,
+            &status_state,
+            &task_state,
+            spawn_loop,
+        )
+        .await;
+        let first = task_state.lock().await.as_ref().unwrap().abort_handle();
+
+        replace_heartbeat_task(
+            test_config(),
+            &heartbeat_state,
+            &status_state,
+            &task_state,
+            spawn_loop,
+        )
+        .await;
+        tokio::task::yield_now().await;
+        assert!(
+            first.is_finished(),
+            "first loop still running after second start"
+        );
+        assert!(task_state.lock().await.is_some());
+
+        stop_heartbeat(heartbeat_state.clone(), status_state, task_state.clone())
+            .await
+            .unwrap();
+        assert!(task_state.lock().await.is_none());
+        assert!(heartbeat_state.lock().await.is_none());
+    }
 }
