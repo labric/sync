@@ -1,6 +1,6 @@
 [package]
 name = "labric-sync"
-version = "0.2.7"
+version = "0.2.8"
 description = "Labric Sync desktop app"
 authors = ["Labric"]
 edition = "2021"
@@ -53,4 +53,5 @@ tauri-plugin-single-instance = "2"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
+tokio = { version = "1.0", features = ["test-util"] }
 

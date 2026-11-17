@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::time::{interval_at, Instant, MissedTickBehavior};
 
 use crate::http_client::{check_response, SharedHttpClient};
 use crate::WatchedFolderState;
@@ -88,89 +89,114 @@ async fn replace_heartbeat_task(
 
 fn spawn_heartbeat_loop(
     http_client: SharedHttpClient,
-    heartbeat_state_clone: HeartbeatState,
-    status_state_clone: HeartbeatStatusState,
-    app_handle_clone: AppHandle,
+    heartbeat_state: HeartbeatState,
+    status_state: HeartbeatStatusState,
+    app_handle: AppHandle,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut interval = interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
-        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        run_heartbeat_loop(Duration::from_secs(HEARTBEAT_INTERVAL_SECS), || {
+            send_heartbeat(&http_client, &heartbeat_state, &status_state, &app_handle)
+        })
+        .await;
+    })
+}
 
-        loop {
-            let config = {
-                let state = heartbeat_state_clone.lock().await;
-                state.clone()
-            };
+/// Calls `beat` once right away, then once per `period`, until it returns false.
+async fn run_heartbeat_loop<F, Fut>(period: Duration, mut beat: F)
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    // The first tick waits a full period: `interval` would fire it at once,
+    // sending a second heartbeat right behind the one sent on start.
+    let mut interval = interval_at(Instant::now() + period, period);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-            let Some(config) = config else {
-                break;
-            };
+    while beat().await {
+        interval.tick().await;
+    }
+}
 
-            let is_watching = app_handle_clone
-                .try_state::<WatchedFolderState>()
-                .is_some_and(|folder| folder.lock().is_some());
-            let result = make_heartbeat_request(&http_client, &config, is_watching).await;
-            let status = match result {
-                Ok(response) => {
-                    log::info!("Heartbeat successful");
+/// Sends one heartbeat and publishes the result. Returns false once the
+/// heartbeat has been stopped (no config), which ends the loop.
+async fn send_heartbeat(
+    http_client: &SharedHttpClient,
+    heartbeat_state: &HeartbeatState,
+    status_state: &HeartbeatStatusState,
+    app_handle: &AppHandle,
+) -> bool {
+    let config = {
+        let state = heartbeat_state.lock().await;
+        state.clone()
+    };
 
-                    // Handle token rotation
-                    if let Some(ref new_token) = response.new_token {
-                        log::info!("Received rotated token from server, updating store");
-                        match app_handle_clone.store(SETTINGS_STORE_FILENAME) {
-                            Ok(store) => {
-                                store.set(
-                                    "token",
-                                    serde_json::Value::String(new_token.clone()),
-                                );
-                                // Update the in-memory config so future heartbeats use the new token
-                                {
-                                    let mut state = heartbeat_state_clone.lock().await;
-                                    if let Some(ref mut cfg) = *state {
-                                        cfg.token = new_token.clone();
-                                    }
-                                }
+    let Some(config) = config else {
+        return false;
+    };
 
-                            }
-                            Err(e) => {
-                                log::error!("Failed to persist rotated token: {e}");
+    let is_watching = app_handle
+        .try_state::<WatchedFolderState>()
+        .is_some_and(|folder| folder.lock().is_some());
+    let result = make_heartbeat_request(http_client, &config, is_watching).await;
+    let status = match result {
+        Ok(response) => {
+            log::info!("Heartbeat successful");
+
+            // Handle token rotation
+            if let Some(ref new_token) = response.new_token {
+                log::info!("Received rotated token from server, updating store");
+                match app_handle.store(SETTINGS_STORE_FILENAME) {
+                    Ok(store) => {
+                        store.set(
+                            "token",
+                            serde_json::Value::String(new_token.clone()),
+                        );
+                        // Update the in-memory config so future heartbeats use the new token
+                        {
+                            let mut state = heartbeat_state.lock().await;
+                            if let Some(ref mut cfg) = *state {
+                                cfg.token = new_token.clone();
                             }
                         }
-                    }
 
-                    HeartbeatStatus {
-                        status: Some(response),
-                        is_loading: false,
-                        error: None,
+                    }
+                    Err(e) => {
+                        log::error!("Failed to persist rotated token: {e}");
                     }
                 }
-                Err(e) => {
-                    log::error!("Heartbeat failed: {e}");
-                    let previous_response = {
-                        let state = status_state_clone.lock().await;
-                        state.status.clone()
-                    };
-                    let failed_response = previous_response.map(|mut prev| {
-                        prev.status = OFFLINE_STATUS.to_string();
-                        prev
-                    });
-                    HeartbeatStatus {
-                        status: failed_response,
-                        is_loading: false,
-                        error: Some(e),
-                    }
-                }
-            };
-
-            {
-                let mut state = status_state_clone.lock().await;
-                *state = status.clone();
             }
-            let _ = app_handle_clone.emit("heartbeat_status", &status);
 
-            interval.tick().await;
+            HeartbeatStatus {
+                status: Some(response),
+                is_loading: false,
+                error: None,
+            }
         }
-    })
+        Err(e) => {
+            log::error!("Heartbeat failed: {e}");
+            let previous_response = {
+                let state = status_state.lock().await;
+                state.status.clone()
+            };
+            let failed_response = previous_response.map(|mut prev| {
+                prev.status = OFFLINE_STATUS.to_string();
+                prev
+            });
+            HeartbeatStatus {
+                status: failed_response,
+                is_loading: false,
+                error: Some(e),
+            }
+        }
+    };
+
+    {
+        let mut state = status_state.lock().await;
+        *state = status.clone();
+    }
+    let _ = app_handle.emit("heartbeat_status", &status);
+
+    true
 }
 
 pub async fn stop_heartbeat(
@@ -268,6 +294,7 @@ pub async fn update_heartbeat_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn test_config() -> HeartbeatConfig {
         HeartbeatConfig {
@@ -328,5 +355,31 @@ mod tests {
             .unwrap();
         assert!(task_state.lock().await.is_none());
         assert!(heartbeat_state.lock().await.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn start_sends_one_heartbeat_then_one_per_period() {
+        let period = Duration::from_secs(HEARTBEAT_INTERVAL_SECS);
+        let beats = Arc::new(AtomicUsize::new(0));
+        let counter = beats.clone();
+        let task = tokio::spawn(run_heartbeat_loop(period, move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            async { true }
+        }));
+
+        tokio::time::sleep(period - Duration::from_millis(1)).await;
+        assert_eq!(
+            beats.load(Ordering::SeqCst),
+            1,
+            "start should send one heartbeat, not two back to back"
+        );
+
+        tokio::time::sleep(Duration::from_millis(2)).await;
+        assert_eq!(beats.load(Ordering::SeqCst), 2);
+
+        tokio::time::sleep(period).await;
+        assert_eq!(beats.load(Ordering::SeqCst), 3);
+
+        task.abort();
     }
 }
