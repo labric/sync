@@ -1,5 +1,6 @@
-// Mirrors the web app's device status badge (frontend/components/
-// current-device-status.tsx in labric/web). `isWatching` must come from the
+// Colours and labels follow the web app's device status badge
+// (frontend/components/current-device-status.tsx in labric/web); the
+// not-watching tooltip is Sync's own wording. `isWatching` must come from the
 // backend's watched folder, the same value the heartbeat reports as
 // `is_watching`.
 export function deviceStatusDisplay(
@@ -13,8 +14,18 @@ export function deviceStatusDisplay(
     return {
       label: "Not watching a folder",
       dotClass: "bg-warning",
-      tooltip: "Device is online, but not watching a folder",
+      tooltip: "Online, not watching a folder",
     };
   }
   return { label: "Online", dotClass: "bg-success" };
+}
+
+// Files can still be uploading after watching stops, so pending uploads are
+// shown either way; "up to date" only means something for a watched folder.
+export function syncProgressDisplay(
+  pending: number,
+  isWatching: boolean
+): { kind: "syncing"; pending: number } | { kind: "up_to_date" } | null {
+  if (pending > 0) return { kind: "syncing", pending };
+  return isWatching ? { kind: "up_to_date" } : null;
 }

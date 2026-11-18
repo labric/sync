@@ -43,7 +43,7 @@ import { useSessionContext } from "@/hooks/use-session-context";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
-import { deviceStatusDisplay } from "@/lib/device-status";
+import { deviceStatusDisplay, syncProgressDisplay } from "@/lib/device-status";
 
 const statusConfig = {
   pending: {
@@ -390,6 +390,10 @@ export default function Simple() {
     heartbeatStatus?.status?.status,
     isWatching
   );
+  const syncProgress = syncProgressDisplay(
+    (progress?.total_queued ?? 0) + (progress?.in_flight ?? 0),
+    isWatching
+  );
 
   return (
     <main className="container mx-auto p-6 max-w-4xl">
@@ -538,15 +542,15 @@ export default function Simple() {
           </Tooltip>
         </div>
         <div className="flex items-center space-x-4">
-          <span className="flex items-center gap-2">
-            {(() => {
-              const pending = (progress?.total_queued ?? 0) + (progress?.in_flight ?? 0);
-              if (pending > 0) {
-                return <><Loader2 className="h-3 w-3 animate-spin" /><span>Syncing <span className="font-mono tabular-nums">{pending}</span> file{pending === 1 ? "" : "s"}</span></>;
-              }
-              return <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>;
-            })()}
-          </span>
+          {syncProgress && (
+            <span className="flex items-center gap-2">
+              {syncProgress.kind === "syncing" ? (
+                <><Loader2 className="h-3 w-3 animate-spin" /><span>Syncing <span className="font-mono tabular-nums">{syncProgress.pending}</span> file{syncProgress.pending === 1 ? "" : "s"}</span></>
+              ) : (
+                <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>
+              )}
+            </span>
+          )}
           <SessionContextSheet>
             {sessionActive ? (
               <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent-foreground/10 text-accent-foreground text-xs">
