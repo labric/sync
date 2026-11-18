@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import logo from '@/assets/logo.svg'
 import { getToken, setToken, getOrganizationId, setOrganizationId } from '@/lib/store'
 import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
+import { type PairCodeResponse, pollPairingBody } from '@/lib/pairing'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -70,6 +71,7 @@ function Login() {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deviceInfoRef = useRef<DeviceInfo | null>(null);
+  const pairingSecretRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -188,9 +190,10 @@ function Login() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data: PairCodeResponse = await response.json();
 
       if (data.success && data.otp_code) {
+        pairingSecretRef.current = data.pairing_secret ?? null;
         setPairCode(data.otp_code);
         setFetchFailed(false);
         if (isAutoRefresh) toast.info("Pair code refreshed");
@@ -219,9 +222,10 @@ function Login() {
 
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const response = await apiCall('poll-pairing', {
-          device_fingerprint: deviceInfo.device_fingerprint
-        });
+        const response = await apiCall(
+          'poll-pairing',
+          pollPairingBody(deviceInfo.device_fingerprint, pairingSecretRef.current)
+        );
 
         if (!response.ok) return;
 

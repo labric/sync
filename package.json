@@ -1,12 +1,13 @@
 {
   "name": "labric-sync",
   "private": true,
-  "version": "0.2.8",
+  "version": "0.2.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "node --test 'src/**/*.test.ts'",
     "tauri": "tauri",
     "types": "openapi-typescript http://localhost:8000/api/openapi.json -o src/types/api.d.ts"
   },

@@ -11,6 +11,7 @@ pnpm install              # Install frontend dependencies
 pnpm tauri dev            # Run dev (Vite on :1420 + Tauri window)
 pnpm tauri build          # Production build
 pnpm types                # Generate TS types from OpenAPI spec
+pnpm test                 # Run frontend unit tests (Node test runner)
 cargo check --manifest-path src-tauri/Cargo.toml   # Check Rust code
 cargo clippy --manifest-path src-tauri/Cargo.toml   # Lint Rust code
 ```
@@ -56,7 +57,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml   # Lint Rust code
 
 ## Gotchas
 
-- No test suite exists yet -- be careful with refactors
+- Test coverage is thin (Rust tests in `src-tauri/tests/`, a few frontend unit tests run by `pnpm test`) -- be careful with refactors
 - `tauri.conf.json` CSP is set to `null` (permissive) -- do not tighten without testing
 - The upload queue runs as a background tokio task started in `setup()` -- it's always running when the app is open
 - Tauri Store persists to `settings.json` in the app data directory, not the project
