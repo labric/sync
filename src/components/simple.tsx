@@ -42,6 +42,7 @@ import { useUploadManager } from "@/hooks/useUploadManager";
 import { useSessionContext } from "@/hooks/use-session-context";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
+import { AppInfoButton } from "./app-info-button";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 
 const statusConfig = {
@@ -565,6 +566,7 @@ export default function Simple() {
               <Settings2Icon className="w-3 h-3" />
             </button>
           </UploadSettingsSheet>
+          <AppInfoButton align="end" className="size-5" />
         </div>
       </div>
 
