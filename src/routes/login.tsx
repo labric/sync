@@ -311,7 +311,7 @@ function Login() {
 
         <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4 mb-8">
           {tokenRejected && (
-            <p className="text-sm font-medium text-center">
+            <p className="text-sm font-medium text-center text-balance">
               This device is no longer paired. Pair it again to keep syncing.
             </p>
           )}
