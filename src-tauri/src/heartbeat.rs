@@ -3,15 +3,14 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval_at, Instant, MissedTickBehavior};
 
 use crate::http_client::{check_sync_response, SharedHttpClient};
+use crate::sync_token::store_rotated_token;
 use crate::WatchedFolderState;
 
-const SETTINGS_STORE_FILENAME: &str = "settings.json";
 
 const HEARTBEAT_INTERVAL_SECS: u64 = 30;
 const OFFLINE_STATUS: &str = "offline";
@@ -142,27 +141,14 @@ async fn send_heartbeat(
         Ok(response) => {
             log::info!("Heartbeat successful");
 
-            // Handle token rotation
             if let Some(ref new_token) = response.new_token {
-                log::info!("Received rotated token from server, updating store");
-                match app_handle.store(SETTINGS_STORE_FILENAME) {
-                    Ok(store) => {
-                        store.set(
-                            "token",
-                            serde_json::Value::String(new_token.clone()),
-                        );
-                        // Update the in-memory config so future heartbeats use the new token
-                        {
-                            let mut state = heartbeat_state.lock().await;
-                            if let Some(ref mut cfg) = *state {
-                                cfg.token = new_token.clone();
-                            }
-                        }
-
+                if store_rotated_token(app_handle, &config.token, new_token) {
+                    log::info!("Stored the rotated token from the server");
+                    if let Some(ref mut cfg) = *heartbeat_state.lock().await {
+                        cfg.token = new_token.clone();
                     }
-                    Err(e) => {
-                        log::error!("Failed to persist rotated token: {e}");
-                    }
+                } else {
+                    log::info!("Dropped a rotated token: the device was signed out meanwhile");
                 }
             }
 

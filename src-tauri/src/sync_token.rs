@@ -1,9 +1,10 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
-use tauri_plugin_store::StoreExt;
+use tauri_plugin_store::{Store, StoreExt};
 
 use crate::heartbeat::HeartbeatState;
 use crate::upload::SETTINGS_STORE_FILENAME;
@@ -57,12 +58,9 @@ pub async fn sign_out_rejected_token<R: Runtime>(token: &str, app_handle: &AppHa
     if is_expired(token, now_secs) {
         return;
     }
-    let Ok(store) = app_handle.store(SETTINGS_STORE_FILENAME) else {
+    let Some(store) = store_holding(app_handle, token) else {
         return;
     };
-    if store.get(TOKEN_STORE_KEY).as_ref().and_then(Value::as_str) != Some(token) {
-        return;
-    }
 
     log::warn!("The server rejected this device's Sync token; asking the user to pair again");
     store.delete(TOKEN_STORE_KEY);
@@ -73,6 +71,27 @@ pub async fn sign_out_rejected_token<R: Runtime>(token: &str, app_handle: &AppHa
         *heartbeat.lock().await = None;
     }
     let _ = app_handle.emit(TOKEN_REJECTED_EVENT, ());
+}
+
+/// Stores a token the heartbeat got by rotation, unless the token it was sent
+/// with is no longer the stored one, as after a sign-out while it was in flight.
+#[doc(hidden)]
+pub fn store_rotated_token<R: Runtime>(app_handle: &AppHandle<R>, sent: &str, rotated: &str) -> bool {
+    let Some(store) = store_holding(app_handle, sent) else {
+        return false;
+    };
+    store.set(TOKEN_STORE_KEY, rotated);
+    true
+}
+
+/// The settings store, if `token` is the token stored in it.
+fn store_holding<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    token: &str,
+) -> Option<Arc<Store<R>>> {
+    let store = app_handle.store(SETTINGS_STORE_FILENAME).ok()?;
+    let stored = store.get(TOKEN_STORE_KEY);
+    (stored.as_ref().and_then(Value::as_str) == Some(token)).then_some(store)
 }
 
 #[cfg(test)]

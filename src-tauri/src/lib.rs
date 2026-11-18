@@ -42,7 +42,7 @@ use upload::{
     clear_upload_queue, get_org_members, get_queue_size, get_session_context, get_upload_config,
     get_upload_progress, get_upload_status_backlog, process_upload_queue, restore_session_context,
     restore_upload_config, set_session_context, set_upload_config, trigger_manual_upload,
-    SessionContext, SessionContextState, UploadProgress, UploadProgressState,
+    SessionContext, SessionContextState, UploadProgress, UploadProgressState, UploadQueueGeneration,
     SETTINGS_STORE_FILENAME,
 };
 // Public so integration tests can drive the watch lifecycle; not a real API
@@ -63,7 +63,7 @@ pub use heartbeat::{HeartbeatConfig, HeartbeatState};
 
 mod sync_token;
 #[doc(hidden)]
-pub use sync_token::{sign_out_rejected_token, TOKEN_REJECTED_STORE_KEY};
+pub use sync_token::{sign_out_rejected_token, store_rotated_token, TOKEN_REJECTED_STORE_KEY};
 
 mod diagnostics;
 use diagnostics::run_network_diagnostics;
@@ -632,6 +632,7 @@ pub fn run() {
     let file_change_log: FileChangeLog = Arc::new(Mutex::new(VecDeque::new()));
     let upload_status_log: UploadStatusLog = Arc::new(Mutex::new(Vec::new()));
     let upload_queue: UploadQueue = Arc::new(Mutex::new(VecDeque::new()));
+    let upload_queue_generation = UploadQueueGeneration::default();
     let upload_config: UploadConfigState = Arc::new(Mutex::new(UploadConfig::default()));
     let upload_progress: UploadProgressState = Arc::new(Mutex::new(UploadProgress {
         total_queued: 0,
@@ -685,6 +686,7 @@ pub fn run() {
         .manage(upload_status_log.clone())
         .manage(http_client.clone())
         .manage(upload_queue.clone())
+        .manage(upload_queue_generation.clone())
         .manage(upload_config.clone())
         .manage(upload_progress.clone())
         .manage(session_context.clone())
@@ -727,6 +729,7 @@ pub fn run() {
 
             // Start the upload processor in the background
             let upload_queue_clone = upload_queue.clone();
+            let upload_queue_generation = upload_queue_generation.clone();
             let upload_config_clone = upload_config.clone();
             let upload_progress_clone = upload_progress.clone();
             let session_context_clone = session_context.clone();
@@ -736,6 +739,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 process_upload_queue(
                     upload_queue_clone,
+                    upload_queue_generation,
                     upload_config_clone,
                     upload_progress_clone,
                     session_context_clone,

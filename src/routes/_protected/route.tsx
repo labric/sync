@@ -19,7 +19,10 @@ function ProtectedLayout() {
 
   // The Rust side has already cleared the token the server rejected
   useEffect(() => {
-    const unlisten = listen("token_rejected", () => router.navigate({ to: "/login" }));
+    const unlisten = listen("token_rejected", () => {
+      setIsAuthenticated(false);
+      router.navigate({ to: "/login" });
+    });
     return () => {
       unlisten.then((fn) => fn());
     };

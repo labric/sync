@@ -5,11 +5,13 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
 use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
-use tauri::Manager;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tauri::{Listener, Manager};
 use tauri_plugin_store::StoreExt;
 
 use labric_sync_lib::{
-    sign_out_rejected_token, HeartbeatConfig, HeartbeatState, TOKEN_REJECTED_STORE_KEY,
+    sign_out_rejected_token, store_rotated_token, HeartbeatConfig, HeartbeatState,
+    TOKEN_REJECTED_STORE_KEY,
 };
 
 const FAR_FUTURE: u64 = 4_000_000_000;
@@ -61,13 +63,19 @@ async fn rejection_clears_the_token_stops_the_heartbeat_and_keeps_the_org() {
 }
 
 #[tokio::test]
-async fn a_second_rejection_of_the_same_token_changes_nothing() {
+async fn a_second_rejection_of_the_same_token_does_nothing() {
     let rejected = token("org_a", FAR_FUTURE);
     let app = mock_app(&rejected);
+    let transitions = Arc::new(AtomicUsize::new(0));
+    let counter = transitions.clone();
+    app.listen_any("token_rejected", move |_| {
+        counter.fetch_add(1, Ordering::SeqCst);
+    });
 
     sign_out_rejected_token(&rejected, app.handle()).await;
     sign_out_rejected_token(&rejected, app.handle()).await;
 
+    assert_eq!(transitions.load(Ordering::SeqCst), 1);
     assert_eq!(stored(&app, "token"), None);
     assert_eq!(
         stored(&app, TOKEN_REJECTED_STORE_KEY),
@@ -97,4 +105,31 @@ async fn an_expired_token_is_left_to_the_existing_expiry_check() {
     assert_eq!(stored(&app, "token"), Some(json!(expired)));
     assert_eq!(stored(&app, TOKEN_REJECTED_STORE_KEY), None);
     assert!(heartbeat_running(&app).await);
+}
+
+#[tokio::test]
+async fn a_rotated_token_replaces_the_token_it_was_sent_with() {
+    let sent = token("org_a", FAR_FUTURE);
+    let rotated = token("org_a", FAR_FUTURE + 1);
+    let app = mock_app(&sent);
+
+    assert!(store_rotated_token(app.handle(), &sent, &rotated));
+
+    assert_eq!(stored(&app, "token"), Some(json!(rotated)));
+}
+
+// A heartbeat in flight while the device is signed out must not restore a token.
+#[tokio::test]
+async fn a_rotated_token_is_not_written_after_the_sign_out() {
+    let sent = token("org_a", FAR_FUTURE);
+    let app = mock_app(&sent);
+    sign_out_rejected_token(&sent, app.handle()).await;
+
+    assert!(!store_rotated_token(
+        app.handle(),
+        &sent,
+        &token("org_a", FAR_FUTURE + 1)
+    ));
+
+    assert_eq!(stored(&app, "token"), None);
 }
