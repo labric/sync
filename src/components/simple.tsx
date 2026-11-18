@@ -511,7 +511,9 @@ export default function Simple() {
               </div>
             </TooltipTrigger>
             <TooltipContent collisionPadding={8}>
-              {heartbeatStatus?.status?.status === "online" ? (
+              {deviceStatus.tooltip ? (
+                <span>{deviceStatus.tooltip}</span>
+              ) : heartbeatStatus?.status?.status === "online" ? (
                 <>
                   <span>Online since</span>{" "}
                   {new Date(heartbeatStatus?.status?.first_seen).toLocaleString(

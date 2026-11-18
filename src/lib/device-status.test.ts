@@ -12,8 +12,9 @@ test('online and watching is green', () => {
 
 test('online but not watching a folder is yellow', () => {
   assert.deepEqual(deviceStatusDisplay('online', false), {
-    label: 'Connected, but not watching a folder',
+    label: 'Not watching a folder',
     dotClass: 'bg-warning',
+    tooltip: 'Device is online, but not watching a folder',
   });
 });
 
