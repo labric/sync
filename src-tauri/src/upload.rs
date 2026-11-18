@@ -15,7 +15,7 @@ use tokio::time::sleep;
 
 use futures::stream::{self, StreamExt};
 
-use crate::http_client::{check_response, SharedHttpClient};
+use crate::http_client::{check_response, check_sync_response, SharedHttpClient};
 use crate::{EVENT_TYPE_INITIAL, EVENT_TYPE_MODIFIED};
 
 // Upload processing constants
@@ -498,7 +498,13 @@ async fn get_presigned_urls_batch(
         .await
         .map_err(|e| format!("Failed to send batch presigned request: {e}"))?;
 
-    let response = check_response(response, "Batch presigned request").await?;
+    let response = check_sync_response(
+        response,
+        "Batch presigned request",
+        token.as_deref(),
+        app_handle,
+    )
+    .await?;
 
     let batch_response: GetPresignedBatchResponse = response
         .json()
@@ -583,9 +589,11 @@ async fn update_file_metadata(
         .await
         .map_err(|e| format!("Failed to send metadata update for file ID '{file_id}': {e}"))?;
 
-    check_response(
+    check_sync_response(
         response,
         &format!("Metadata update for file ID '{file_id}'"),
+        token.as_deref(),
+        app_handle,
     )
     .await?;
 
@@ -1074,7 +1082,8 @@ pub async fn get_org_members(
         .await
         .map_err(|e| format!("Failed to fetch org members: {e}"))?;
 
-    let response = check_response(response, "Get org members").await?;
+    let response =
+        check_sync_response(response, "Get org members", Some(&token), &app_handle).await?;
 
     let body: OrgMembersResponse = response
         .json()

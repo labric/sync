@@ -8,9 +8,18 @@ import { DeviceInfo } from '@/types'
 import { RefreshCw, Stethoscope } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import logo from '@/assets/logo.svg'
-import { getToken, setToken, getOrganizationId, setOrganizationId } from '@/lib/store'
+import { jwtDecode } from 'jwt-decode'
+import {
+  type CustomJwtPayload,
+  getToken,
+  setToken,
+  getOrganizationId,
+  setOrganizationId,
+  getTokenRejection,
+  clearTokenRejection,
+} from '@/lib/store'
 import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
-import { type PairCodeResponse, pollPairingBody } from '@/lib/pairing'
+import { type PairCodeResponse, keepsWatchedFolder, pollPairingBody } from '@/lib/pairing'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -62,11 +71,20 @@ const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: b
   );
 };
 
+function tokenOrgId(token: string): string | undefined {
+  try {
+    return jwtDecode<CustomJwtPayload>(token).org_id;
+  } catch {
+    return undefined;
+  }
+}
+
 function Login() {
   const [pairCode, setPairCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
+  const [tokenRejected, setTokenRejected] = useState(false);
   const isSigningInRef = useRef(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,6 +106,7 @@ function Login() {
         console.error('Error checking auth:', error);
       }
       
+      setTokenRejected((await getTokenRejection()) !== null);
       // If not signed in, start pairing process
       await initializePairing();
     };
@@ -256,7 +275,15 @@ function Login() {
   };
 
   const signIn = async (token: string, organizationId?: string) => {
+    const rejection = await getTokenRejection();
+    if (rejection && !keepsWatchedFolder(rejection.org_id, tokenOrgId(token))) {
+      // Stopped before the new token is stored, so no queued file uploads into the new organization
+      await invoke('stop_watching');
+      await invoke('clear_upload_queue');
+      toast.info('Paired to a different organization. Choose the folder to sync again.');
+    }
     await setToken(token);
+    await clearTokenRejection();
     
     if (organizationId) {
       await setOrganizationId(organizationId);
@@ -283,6 +310,11 @@ function Login() {
         </div>
 
         <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4 mb-8">
+          {tokenRejected && (
+            <p className="text-sm font-medium text-center">
+              This device is no longer paired. Pair it again to keep syncing.
+            </p>
+          )}
           <CodeDisplay code={pairCode || undefined} isLoading={isLoading} />
           <p className="text-md font-light text-muted-foreground">
             Enter this code at{" "}

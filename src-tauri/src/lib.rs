@@ -55,8 +55,15 @@ pub use upload::{
 mod heartbeat;
 use heartbeat::{
     get_heartbeat_status, start_heartbeat, stop_heartbeat, update_heartbeat_config,
-    HeartbeatConfig, HeartbeatState, HeartbeatStatus, HeartbeatStatusState, HeartbeatTaskState,
+    HeartbeatStatus, HeartbeatStatusState, HeartbeatTaskState,
 };
+// Public so integration tests can check the token-rejection sign-out; not a real API
+#[doc(hidden)]
+pub use heartbeat::{HeartbeatConfig, HeartbeatState};
+
+mod sync_token;
+#[doc(hidden)]
+pub use sync_token::{sign_out_rejected_token, TOKEN_REJECTED_STORE_KEY};
 
 mod diagnostics;
 use diagnostics::run_network_diagnostics;

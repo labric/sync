@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval_at, Instant, MissedTickBehavior};
 
-use crate::http_client::{check_response, SharedHttpClient};
+use crate::http_client::{check_sync_response, SharedHttpClient};
 use crate::WatchedFolderState;
 
 const SETTINGS_STORE_FILENAME: &str = "settings.json";
@@ -137,7 +137,7 @@ async fn send_heartbeat(
     let is_watching = app_handle
         .try_state::<WatchedFolderState>()
         .is_some_and(|folder| folder.lock().is_some());
-    let result = make_heartbeat_request(http_client, &config, is_watching).await;
+    let result = make_heartbeat_request(http_client, &config, is_watching, app_handle).await;
     let status = match result {
         Ok(response) => {
             log::info!("Heartbeat successful");
@@ -241,6 +241,7 @@ async fn make_heartbeat_request(
     client: &SharedHttpClient,
     config: &HeartbeatConfig,
     is_watching: bool,
+    app_handle: &AppHandle,
 ) -> Result<HeartbeatResponse, String> {
     let request_body = HeartbeatRequest {
         device_fingerprint: config.device_fingerprint.clone(),
@@ -258,7 +259,8 @@ async fn make_heartbeat_request(
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
 
-    let response = check_response(response, "Heartbeat").await?;
+    let response =
+        check_sync_response(response, "Heartbeat", Some(&config.token), app_handle).await?;
 
     response
         .json()
