@@ -88,6 +88,11 @@ pub type WatcherState = Arc<Mutex<Option<RecommendedWatcher>>>;
 // Folder currently being watched, if any
 #[doc(hidden)]
 pub type WatchedFolderState = Arc<Mutex<Option<String>>>;
+
+/// Tells the frontend the watched folder (or null) whenever it changes; the
+/// heartbeat reports the same state as `is_watching`.
+const WATCHED_FOLDER_CHANGED_EVENT: &str = "watched_folder_changed";
+
 // Bumped by every start/stop request so an in-flight start (whose initial scan
 // can take a long time on big folders) can detect it was superseded and abort
 // instead of undoing a newer stop or folder change
@@ -286,6 +291,7 @@ pub fn start_watching_impl<R: tauri::Runtime>(
         }
         *watcher_guard = Some(watcher);
         *watched_folder.lock() = Some(folder_path.clone());
+        let _ = app_handle.emit(WATCHED_FOLDER_CHANGED_EVENT, Some(&folder_path));
         if let Ok(store) = app_handle.store(SETTINGS_STORE_FILENAME) {
             store.set(WATCHED_FOLDER_STORE_KEY, serde_json::json!(folder_path));
         }
@@ -398,6 +404,7 @@ async fn stop_watching(
         *watcher = None;
     }
     *watched_folder.lock() = None;
+    let _ = app_handle.emit(WATCHED_FOLDER_CHANGED_EVENT, None::<String>);
 
     // Match the frontend, which clears its file list on stop
     if let Some(log) = app_handle.try_state::<FileChangeLog>() {

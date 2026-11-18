@@ -44,6 +44,7 @@ import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
 import { AppInfoButton } from "./app-info-button";
 import { getRecentDirs, pushRecent } from "@/lib/store";
+import { deviceStatusDisplay, syncProgressDisplay } from "@/lib/device-status";
 
 const statusConfig = {
   pending: {
@@ -158,6 +159,9 @@ export default function Simple() {
   // Removed isOnline state as it's no longer needed with Rust backend
   const [recentDirs, setRecentDirs] = useState<string[]>([]);
   const [heartbeatStatus, setHeartbeatStatus] = useState<any>(null);
+  // The backend's watched folder, unlike selectedFolder, which is set before
+  // start_watching finishes or even if it fails
+  const [isWatching, setIsWatching] = useState(false);
   const [uploadStatuses, setUploadStatuses] = useState<
     Map<string, FileUploadStatus["status"]>
   >(new Map());
@@ -196,8 +200,13 @@ export default function Simple() {
       setSelectedFolder("");
       toast.error(`Could not resume watching ${event.payload as string}`);
     });
+    const unlistenWatchedFolderChanged = listen<string | null>(
+      "watched_folder_changed",
+      (event) => setIsWatching(event.payload !== null)
+    );
     invoke<string | null>("get_watched_folder")
       .then((folder) => {
+        setIsWatching(folder !== null);
         if (folder) setSelectedFolder(folder);
       })
       .catch((err) => console.error("Failed to get watched folder:", err));
@@ -269,6 +278,7 @@ export default function Simple() {
       unlistenUploadStatus.then((fn) => fn());
       unlistenWatchResumed.then((fn) => fn());
       unlistenWatchResumeFailed.then((fn) => fn());
+      unlistenWatchedFolderChanged.then((fn) => fn());
     };
   }, []);
 
@@ -376,6 +386,15 @@ export default function Simple() {
       return relativePath.toLowerCase().includes(query);
     });
   }, [fileChanges, searchQuery, selectedFolder]);
+
+  const deviceStatus = deviceStatusDisplay(
+    heartbeatStatus?.status?.status,
+    isWatching
+  );
+  const syncProgress = syncProgressDisplay(
+    (progress?.total_queued ?? 0) + (progress?.in_flight ?? 0),
+    isWatching
+  );
 
   return (
     <main className="container mx-auto p-6 max-w-4xl">
@@ -492,21 +511,14 @@ export default function Simple() {
           <Tooltip>
             <TooltipTrigger>
               <div className="flex items-center space-x-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${heartbeatStatus?.status?.status === "online"
-                      ? "bg-success"
-                      : "bg-destructive"
-                    }`}
-                ></div>
-                <span>
-                  {heartbeatStatus?.status?.status === "online"
-                    ? "Online"
-                    : "Offline"}
-                </span>
+                <div className={`w-2 h-2 rounded-full ${deviceStatus.dotClass}`}></div>
+                <span>{deviceStatus.label}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent collisionPadding={8}>
-              {heartbeatStatus?.status?.status === "online" ? (
+              {deviceStatus.tooltip ? (
+                <span>{deviceStatus.tooltip}</span>
+              ) : heartbeatStatus?.status?.status === "online" ? (
                 <>
                   <span>Online since</span>{" "}
                   {new Date(heartbeatStatus?.status?.first_seen).toLocaleString(
@@ -531,15 +543,15 @@ export default function Simple() {
           </Tooltip>
         </div>
         <div className="flex items-center space-x-4">
-          <span className="flex items-center gap-2">
-            {(() => {
-              const pending = (progress?.total_queued ?? 0) + (progress?.in_flight ?? 0);
-              if (pending > 0) {
-                return <><Loader2 className="h-3 w-3 animate-spin" /><span>Syncing <span className="font-mono tabular-nums">{pending}</span> file{pending === 1 ? "" : "s"}</span></>;
-              }
-              return <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>;
-            })()}
-          </span>
+          {syncProgress && (
+            <span className="flex items-center gap-2">
+              {syncProgress.kind === "syncing" ? (
+                <><Loader2 className="h-3 w-3 animate-spin" /><span>Syncing <span className="font-mono tabular-nums">{syncProgress.pending}</span> file{syncProgress.pending === 1 ? "" : "s"}</span></>
+              ) : (
+                <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>
+              )}
+            </span>
+          )}
           <SessionContextSheet>
             {sessionActive ? (
               <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent-foreground/10 text-accent-foreground text-xs">
