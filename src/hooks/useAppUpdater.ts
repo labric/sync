@@ -7,8 +7,10 @@ import {
   type UpdateState,
   UPDATE_CHECK_INTERVAL_MS,
   initialUpdateState,
+  pendingUpdate,
   updateReducer,
 } from '@/lib/update-state';
+import type { PendingUpdate } from '@/components/app-info-button';
 
 const TOAST_ID = 'update-notification';
 
@@ -64,7 +66,7 @@ async function checkForUpdate() {
   });
 }
 
-export async function installUpdate() {
+async function installUpdate() {
   const before = state;
   dispatch({ type: 'installStarted' });
   if (state === before || !downloadedUpdate) return;
@@ -75,7 +77,7 @@ export async function installUpdate() {
   } catch (error) {
     console.error('Failed to install update:', error);
     dispatch({ type: 'installFailed' });
-    toast.error('Failed to install update', { description: 'Try again from the update button.' });
+    toast.error('Failed to install update', { description: 'Try again from "Update ready".' });
   }
 }
 
@@ -84,8 +86,9 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-export function useUpdateState() {
-  return useSyncExternalStore(subscribe, () => state);
+export function usePendingUpdate(): PendingUpdate | undefined {
+  const update = pendingUpdate(useSyncExternalStore(subscribe, () => state));
+  return update && { ...update, onInstall: installUpdate };
 }
 
 // Mounted once at the root, so updates are checked on every screen, signed in or not.

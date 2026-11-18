@@ -1,5 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import { jwtDecode, JwtPayload } from "jwt-decode";
+import { type InstallRecord, nextInstallRecord } from "./install-record";
 
 // Custom JWT payload interface for our application
 export interface CustomJwtPayload extends JwtPayload {
@@ -80,4 +81,15 @@ export async function getOrganizationId(): Promise<string | null> {
 
 export async function clearOrganizationId() {
   await store.delete(ORG_ID_KEY);
+}
+
+const INSTALL_KEY = "install";
+
+export async function recordInstall(version: string): Promise<InstallRecord> {
+  const stored = await get<InstallRecord | null>(INSTALL_KEY, null);
+  const firstRun =
+    !stored && !(await store.has(TOKEN_KEY)) && !(await store.has(RECENT_KEY)) && !(await store.has(ORG_ID_KEY));
+  const record = nextInstallRecord(stored, version, new Date().toISOString(), firstRun);
+  if (record !== stored) await set(INSTALL_KEY, record);
+  return record;
 }

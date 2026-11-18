@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type UpdateEvent, type UpdateState, initialUpdateState, updateReducer } from './update-state.ts';
+import { type UpdateEvent, type UpdateState, initialUpdateState, pendingUpdate, updateReducer } from './update-state.ts';
 
 const run = (...events: UpdateEvent[]): UpdateState =>
   events.reduce(updateReducer, initialUpdateState);
@@ -72,4 +72,15 @@ test('nothing can be installed before an update is ready', () => {
   const downloading = run({ type: 'found', version: '0.3.0' });
   assert.equal(updateReducer(downloading, { type: 'installStarted' }), downloading);
   assert.equal(updateReducer(downloading, { type: 'postponed' }), downloading);
+});
+
+test('the app info button shows a ready, postponed, installing or failed update', () => {
+  const ready = run({ type: 'found', version: '0.3.0' }, { type: 'downloaded', version: '0.3.0' });
+  assert.equal(pendingUpdate(initialUpdateState), undefined);
+  assert.equal(pendingUpdate(run({ type: 'found', version: '0.3.0' })), undefined);
+  assert.deepEqual(pendingUpdate(ready), { version: '0.3.0', postponed: false, installing: false });
+  assert.deepEqual(pendingUpdate(updateReducer(ready, { type: 'postponed' })), { version: '0.3.0', postponed: true, installing: false });
+  const installing = updateReducer(ready, { type: 'installStarted' });
+  assert.deepEqual(pendingUpdate(installing), { version: '0.3.0', postponed: false, installing: true });
+  assert.deepEqual(pendingUpdate(updateReducer(installing, { type: 'installFailed' })), { version: '0.3.0', postponed: false, installing: false });
 });
