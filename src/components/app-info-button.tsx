@@ -26,7 +26,7 @@ export function AppInfoButton({ align = "center", className, update }: Props) {
     <Popover>
       <PopoverTrigger asChild>
         {update ? (
-          <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs bg-accent-foreground/10 text-accent-foreground">
+          <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs bg-accent-foreground/10 text-accent-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <CircleArrowDown className="size-3" />
             <span>Update ready</span>
           </button>
@@ -38,7 +38,7 @@ export function AppInfoButton({ align = "center", className, update }: Props) {
       </PopoverTrigger>
       <PopoverContent side="top" align={align} className="space-y-3">
         <div className="space-y-0.5">
-          <p className="text-sm font-medium">Labric Sync {record?.version}</p>
+          <p className="text-sm font-medium">Labric Sync{record && ` ${record.version}`}</p>
           {record && <p className="text-xs text-muted-foreground">{describeInstall(record, formatDate)}</p>}
         </div>
         {update && (
