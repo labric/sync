@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import logo from '@/assets/logo.svg'
 import { getToken, setToken, getOrganizationId, setOrganizationId } from '@/lib/store'
 import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
+import { UpdateButton } from '@/components/update-button'
 import { type PairCodeResponse, pollPairingBody } from '@/lib/pairing'
 
 export const Route = createFileRoute('/login')({
@@ -315,6 +316,7 @@ function Login() {
             Run network diagnostic
           </Button>
         )}
+        <UpdateButton />
       </div>
       <NetworkDiagnosticSheet
         open={diagnosticOpen}

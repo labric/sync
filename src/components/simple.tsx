@@ -42,6 +42,7 @@ import { useUploadManager } from "@/hooks/useUploadManager";
 import { useSessionContext } from "@/hooks/use-session-context";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
+import { UpdateButton } from "./update-button";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 
 const statusConfig = {
@@ -528,6 +529,7 @@ export default function Simple() {
               )}
             </TooltipContent>
           </Tooltip>
+          <UpdateButton />
         </div>
         <div className="flex items-center space-x-4">
           <span className="flex items-center gap-2">
