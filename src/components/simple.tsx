@@ -43,6 +43,7 @@ import { useSessionContext } from "@/hooks/use-session-context";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
 import { AppInfoButton } from "./app-info-button";
+import { usePendingUpdate } from "@/hooks/useAppUpdater";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 import { deviceStatusDisplay, syncProgressDisplay } from "@/lib/device-status";
 
@@ -153,6 +154,7 @@ const FileChangeRow = memo(function FileChangeRow({
 
 export default function Simple() {
   const { progress } = useUploadManager();
+  const pendingUpdate = usePendingUpdate();
   const { isActive: sessionActive, timeRemaining: sessionTimeRemaining } = useSessionContext();
   const [selectedFolder, setSelectedFolder] = useState("");
   const [fileChanges, setFileChanges] = useState<FileChangeEvent[]>([]);
@@ -578,7 +580,7 @@ export default function Simple() {
               <Settings2Icon className="w-3 h-3" />
             </button>
           </UploadSettingsSheet>
-          <AppInfoButton align="end" iconClassName="size-5" />
+          <AppInfoButton align="end" iconClassName="size-5" update={pendingUpdate} />
         </div>
       </div>
 

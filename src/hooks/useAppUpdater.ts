@@ -1,77 +1,112 @@
-import { useEffect } from 'react';
-import { check } from '@tauri-apps/plugin-updater';
+import { useEffect, useSyncExternalStore } from 'react';
+import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { toast } from 'sonner';
+import {
+  type UpdateEvent,
+  type UpdateState,
+  UPDATE_CHECK_INTERVAL_MS,
+  initialUpdateState,
+  pendingUpdate,
+  updateReducer,
+} from '@/lib/update-state';
+import type { PendingUpdate } from '@/components/app-info-button';
 
+const TOAST_ID = 'update-notification';
+// A hung download would otherwise block every later check until the app restarts.
+const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+
+let state: UpdateState = initialUpdateState;
+let downloadedUpdate: Update | null = null;
+const listeners = new Set<() => void>();
+
+function dispatch(event: UpdateEvent) {
+  const next = updateReducer(state, event);
+  if (next !== state) {
+    state = next;
+    listeners.forEach((listener) => listener());
+  }
+}
+
+async function checkForUpdate() {
+  let update: Update | null;
+  try {
+    update = await check();
+  } catch (error) {
+    console.error('Failed to check for updates:', error);
+    dispatch({ type: 'checkFailed' });
+    return;
+  }
+  if (!update) return;
+
+  const before = state;
+  dispatch({ type: 'found', version: update.version });
+  if (state === before) {
+    await update.close();
+    return;
+  }
+
+  try {
+    await update.download(undefined, { timeout: DOWNLOAD_TIMEOUT_MS });
+  } catch (error) {
+    console.error('Failed to download update:', error);
+    dispatch({ type: 'downloadFailed', version: update.version });
+    await update.close();
+    return;
+  }
+  await downloadedUpdate?.close();
+  downloadedUpdate = update;
+  dispatch({ type: 'downloaded', version: update.version });
+
+  const postpone = () => dispatch({ type: 'postponed' });
+  toast(`New Update v${update.version}`, {
+    id: TOAST_ID,
+    description: 'Restart to install the update',
+    action: { label: 'Restart', onClick: installUpdate },
+    cancel: { label: 'Later', onClick: postpone },
+    onDismiss: postpone,
+    duration: Infinity,
+  });
+}
+
+async function installUpdate() {
+  const update = downloadedUpdate;
+  if (!update) return;
+  const before = state;
+  dispatch({ type: 'installStarted' });
+  if (state === before) return;
+  toast.dismiss(TOAST_ID);
+  try {
+    await update.install();
+  } catch (error) {
+    console.error('Failed to install update:', error);
+    dispatch({ type: 'installFailed' });
+    toast.error('Failed to install update', { description: 'Try again from "Update ready".' });
+    return;
+  }
+  try {
+    await relaunch();
+  } catch (error) {
+    console.error('Failed to relaunch after installing the update:', error);
+    toast.error('Update installed', { description: 'Quit and reopen Labric Sync to finish.' });
+  }
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function usePendingUpdate(): PendingUpdate | undefined {
+  const update = pendingUpdate(useSyncExternalStore(subscribe, () => state));
+  return update && { ...update, onInstall: installUpdate };
+}
+
+// Mounted once at the root, so updates are checked on every screen, signed in or not.
 export function useAppUpdater() {
   useEffect(() => {
-    // Check for app updates on startup
-    const checkForUpdates = async () => {
-      try {
-        const update = await check();
-        if (update) {
-          console.log(
-            `found update ${update.version} from ${update.date} with notes ${update.body}`
-          );
-          let downloaded = 0;
-          let contentLength = 0;
-          // alternatively we could also call update.download() and update.install() separately
-          await update.download(
-            (event) => {
-              switch (event.event) {
-                case 'Started':
-                  contentLength = event.data.contentLength ?? 0;
-                  console.log(`started downloading ${event.data.contentLength ?? 0} bytes`);
-                  break;
-                case 'Progress':
-                  downloaded += event.data.chunkLength;
-                  console.log(`downloaded ${downloaded} from ${contentLength}`);
-                  break;
-                case 'Finished':
-                  console.log('download finished');
-                  break;
-              }
-            }
-          );
-
-          console.log('update downloaded');
-          
-          toast(`New Update v${update.version}`, {
-            id: "update-notification",
-            description: "Restart to install the update",
-            action: {
-              label: "Restart",
-              onClick: async () => {
-                try {
-                  toast.loading("Installing update...", { id: 'installing' });
-                  await update.install();
-                  console.log('update installed');
-                  toast.dismiss('installing');
-                  await relaunch();
-                } catch (error) {
-                  console.error('Failed to install update:', error);
-                  toast.dismiss('installing');
-                  toast.error("Failed to install update");
-                }
-              },
-            },
-            cancel: {
-              label: "Later",
-              onClick: () => {
-                console.log("Update postponed");
-              },
-            },
-            duration: Infinity,
-          })
-          // wait for 15 seconds
-          await new Promise(resolve => setTimeout(resolve, 15000));
-          // await relaunch();
-        }
-      } catch (error) {
-        console.error('Failed to check for updates:', error);
-      }
-    };
-
-    checkForUpdates();
+    checkForUpdate();
+    const interval = setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, []);
-} 
+}

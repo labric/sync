@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { CircleArrowDown, Info } from "lucide-react";
+import { CircleArrowDown, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useInstallRecord } from "@/hooks/useInstallRecord";
@@ -7,6 +7,7 @@ import { describeInstall } from "@/lib/install-record";
 
 export interface PendingUpdate {
   version: string;
+  installing?: boolean;
   onInstall: () => void;
 }
 
@@ -101,9 +102,9 @@ export function AppInfoButton({ align = "center", iconClassName, update }: Props
           {update && (
             <div className="space-y-2 border-t pt-3">
               <p className="text-xs">Version {update.version} is ready to install.</p>
-              <Button size="xs" className="w-full rounded-full cursor-pointer" onClick={update.onInstall}>
-                <CircleArrowDown />
-                Restart to update
+              <Button size="xs" className="w-full rounded-full cursor-pointer" onClick={update.onInstall} aria-disabled={update.installing}>
+                {update.installing ? <Loader2 className="animate-spin" /> : <CircleArrowDown />}
+                {update.installing ? "Updating…" : "Restart to update"}
               </Button>
             </div>
           )}
