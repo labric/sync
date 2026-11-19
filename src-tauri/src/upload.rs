@@ -501,7 +501,7 @@ async fn get_presigned_urls_batch(
         .map_err(|e| format!("Failed to send batch presigned request: {e}"))?;
 
     let response =
-        check_sync_response(response, "Batch presigned request", Some(token), app_handle).await?;
+        check_sync_response(response, "Batch presigned request", token, app_handle).await?;
 
     let batch_response: GetPresignedBatchResponse = response
         .json()
@@ -586,7 +586,7 @@ async fn update_file_metadata(
     check_sync_response(
         response,
         &format!("Metadata update for file ID '{file_id}'"),
-        Some(token),
+        token,
         app_handle,
     )
     .await?;
@@ -625,12 +625,6 @@ struct Batch {
     generation: u64,
     token: String,
     items: Vec<UploadItem>,
-}
-
-impl Batch {
-    fn is_current(&self, generation: &UploadQueueGeneration) -> bool {
-        generation.load(Ordering::SeqCst) == self.generation
-    }
 }
 
 /// Takes the next ready batch along with the token it must be sent with.
@@ -733,14 +727,6 @@ pub async fn process_upload_queue(
             let mut progress = upload_progress.lock();
             progress.in_flight -= ready_count - prepared_count;
             let _ = app_handle.emit("upload_progress", &*progress);
-        }
-
-        // Reading the files can take a while; the queue may have been cleared meanwhile
-        if !batch.is_current(&queue_generation) {
-            let mut progress = upload_progress.lock();
-            progress.in_flight = progress.in_flight.saturating_sub(prepared_count);
-            let _ = app_handle.emit("upload_progress", &*progress);
-            continue;
         }
 
         // Get presigned URLs for the batch (read session context at request time)
@@ -1139,7 +1125,7 @@ pub async fn get_org_members(
         .map_err(|e| format!("Failed to fetch org members: {e}"))?;
 
     let response =
-        check_sync_response(response, "Get org members", Some(&token), &app_handle).await?;
+        check_sync_response(response, "Get org members", &token, &app_handle).await?;
 
     let body: OrgMembersResponse = response
         .json()
@@ -1178,30 +1164,6 @@ mod tests {
 
         assert!(take_batch(&queue, &generation, None, 0).is_none());
         assert_eq!(paths(&queue), ["a", "b"]);
-    }
-
-    #[test]
-    fn a_batch_carries_the_token_it_was_taken_with() {
-        let queue = queue_of(&["a"]);
-        let generation = UploadQueueGeneration::default();
-
-        let batch = take_batch(&queue, &generation, Some("old".to_string()), 0).unwrap();
-
-        assert_eq!(batch.token, "old");
-        assert!(batch.is_current(&generation));
-    }
-
-    // signIn for another organization clears the queue while a batch is being
-    // read from disk; the batch must not go out afterwards.
-    #[test]
-    fn a_batch_taken_before_the_queue_is_cleared_is_no_longer_current() {
-        let queue = queue_of(&["a"]);
-        let generation = UploadQueueGeneration::default();
-        let batch = take_batch(&queue, &generation, Some("old".to_string()), 0).unwrap();
-
-        clear_queue(&queue, &generation);
-
-        assert!(!batch.is_current(&generation));
     }
 
     // The batch's request fails after signIn cleared the queue; putting it

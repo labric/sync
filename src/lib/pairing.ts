@@ -17,11 +17,3 @@ export const pollPairingBody = (
   pairingSecret
     ? { device_fingerprint: deviceFingerprint, pairing_secret: pairingSecret }
     : { device_fingerprint: deviceFingerprint };
-
-// After the server rejected this device's token, the next pairing keeps the
-// watched folder and upload queue only if it is to the same organization, so
-// one organization's files never upload into another.
-export const keepsWatchedFolder = (
-  rejectedOrgId: string | null,
-  newOrgId: string | undefined,
-): boolean => rejectedOrgId != null && rejectedOrgId === newOrgId;

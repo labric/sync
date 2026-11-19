@@ -10,8 +10,8 @@ use tauri::{Listener, Manager};
 use tauri_plugin_store::StoreExt;
 
 use labric_sync_lib::{
-    sign_out_rejected_token, store_rotated_token, HeartbeatConfig, HeartbeatState,
-    TOKEN_REJECTED_STORE_KEY,
+    check_sync_response, sign_out_rejected_token, store_rotated_token, HeartbeatConfig,
+    HeartbeatState, TOKEN_REJECTED_STORE_KEY,
 };
 
 const FAR_FUTURE: u64 = 4_000_000_000;
@@ -60,6 +60,22 @@ async fn rejection_clears_the_token_stops_the_heartbeat_and_keeps_the_org() {
         Some(json!({ "org_id": "org_a" }))
     );
     assert!(!heartbeat_running(&app).await);
+}
+
+// The heartbeat, upload and org-members calls all check their answers this way.
+#[tokio::test]
+async fn a_rejected_sync_request_signs_the_device_out() {
+    let rejected = token("org_a", FAR_FUTURE);
+    let app = mock_app(&rejected);
+    let response = http::Response::builder()
+        .status(403)
+        .body("Failed to authenticate request")
+        .unwrap();
+
+    let result = check_sync_response(response.into(), "Heartbeat", &rejected, app.handle()).await;
+
+    assert!(result.is_err());
+    assert_eq!(stored(&app, "token"), None);
 }
 
 #[tokio::test]

@@ -2454,6 +2454,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "glob",
+ "http 0.2.12",
  "log",
  "machine-uid",
  "mime_guess",

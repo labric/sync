@@ -28,6 +28,8 @@ const BYTES_TO_GB_DIVISOR: u64 = 1024 * 1024 * 1024;
 
 mod http_client;
 use http_client::{create_shared_client, SharedHttpClient};
+#[doc(hidden)]
+pub use http_client::check_sync_response;
 
 fn show_main_window(window: &WebviewWindow) {
     let _ = window.unminimize();

@@ -1,6 +1,6 @@
 use reqwest::{Client, Response, StatusCode};
 use std::sync::Arc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::sync_token::{is_token_rejection, sign_out_rejected_token};
 
@@ -14,26 +14,25 @@ pub fn create_shared_client() -> SharedHttpClient {
 /// Check an HTTP response status and return a descriptive error if it failed.
 /// On success, returns the response unchanged for further processing.
 pub async fn check_response(response: Response, context: &str) -> Result<Response, String> {
-    let (status, body) = match split_failure(response).await {
-        Ok(response) => return Ok(response),
-        Err(failure) => failure,
-    };
-    Err(format!("{context} failed with status {status}: {body}"))
+    split_failure(response)
+        .await
+        .map_err(|(status, body)| format!("{context} failed with status {status}: {body}"))
 }
 
 /// `check_response` for a request sent with the device's Sync token. When the
 /// server rejected that token, the device is signed out before the error returns.
-pub async fn check_sync_response(
+#[doc(hidden)]
+pub async fn check_sync_response<R: Runtime>(
     response: Response,
     context: &str,
-    token: Option<&str>,
-    app_handle: &AppHandle,
+    token: &str,
+    app_handle: &AppHandle<R>,
 ) -> Result<Response, String> {
     let (status, body) = match split_failure(response).await {
         Ok(response) => return Ok(response),
         Err(failure) => failure,
     };
-    if let Some(token) = token.filter(|_| is_token_rejection(status, &body)) {
+    if is_token_rejection(status, &body) {
         sign_out_rejected_token(token, app_handle).await;
     }
     Err(format!("{context} failed with status {status}: {body}"))

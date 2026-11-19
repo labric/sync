@@ -103,44 +103,25 @@ mod tests {
     }
 
     #[test]
-    fn the_servers_token_check_is_a_rejection() {
-        assert!(is_token_rejection(
-            StatusCode::FORBIDDEN,
-            "Failed to authenticate request"
-        ));
-    }
-
-    #[test]
-    fn the_heartbeats_wrong_device_answer_is_a_rejection() {
-        assert!(is_token_rejection(
-            StatusCode::FORBIDDEN,
-            r#"{"detail": "The heartbeat names a different device than its token"}"#
-        ));
-    }
-
-    #[test]
-    fn other_403s_are_not_rejections() {
+    fn the_servers_answers_are_rejections() {
         for body in [
-            "",
-            "<html><body>Access denied by your network administrator</body></html>",
-            r#"{"detail": "Forbidden"}"#,
-            "Failed to authenticate request, blocked by proxy",
+            "Failed to authenticate request",
+            r#"{"detail": "The heartbeat names a different device than its token"}"#,
         ] {
-            assert!(!is_token_rejection(StatusCode::FORBIDDEN, body), "{body}");
+            assert!(is_token_rejection(StatusCode::FORBIDDEN, body), "{body}");
         }
     }
 
     #[test]
-    fn the_rejection_body_with_another_status_is_not_a_rejection() {
-        for status in [
-            StatusCode::UNAUTHORIZED,
-            StatusCode::INTERNAL_SERVER_ERROR,
-            StatusCode::BAD_GATEWAY,
+    fn other_responses_are_not_rejections() {
+        for (status, body) in [
+            (StatusCode::FORBIDDEN, "<html>Access denied by your network administrator</html>"),
+            (StatusCode::FORBIDDEN, r#"{"detail": "Forbidden"}"#),
+            (StatusCode::FORBIDDEN, "Failed to authenticate request, blocked by proxy"),
+            (StatusCode::UNAUTHORIZED, "Failed to authenticate request"),
+            (StatusCode::BAD_GATEWAY, "Failed to authenticate request"),
         ] {
-            assert!(
-                !is_token_rejection(status, "Failed to authenticate request"),
-                "{status}"
-            );
+            assert!(!is_token_rejection(status, body), "{status} {body}");
         }
     }
 

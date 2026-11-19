@@ -246,7 +246,7 @@ async fn make_heartbeat_request(
         .map_err(|e| format!("Request failed: {e}"))?;
 
     let response =
-        check_sync_response(response, "Heartbeat", Some(&config.token), app_handle).await?;
+        check_sync_response(response, "Heartbeat", &config.token, app_handle).await?;
 
     response
         .json()

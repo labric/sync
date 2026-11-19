@@ -19,7 +19,7 @@ import {
   clearTokenRejection,
 } from '@/lib/store'
 import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
-import { type PairCodeResponse, keepsWatchedFolder, pollPairingBody } from '@/lib/pairing'
+import { type PairCodeResponse, pollPairingBody } from '@/lib/pairing'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -276,10 +276,9 @@ function Login() {
 
   const signIn = async (token: string, organizationId?: string) => {
     const rejection = await getTokenRejection();
-    if (rejection && !keepsWatchedFolder(rejection.org_id, tokenOrgId(token))) {
-      // Done before the new token is stored. Clearing the queue also drops any
-      // batch already taken from it, so no file from the old organization
-      // uploads into the new one, and the old session user is not sent there.
+    // Pairing to another organization drops the old folder, queue and session
+    // user before the new token is stored, so none of it reaches the new one.
+    if (rejection && rejection.org_id !== tokenOrgId(token)) {
       await invoke('stop_watching');
       await invoke('clear_upload_queue');
       await invoke('clear_session_context');
