@@ -93,7 +93,7 @@ export function AppInfoButton({ align = "center", className, update }: Props) {
           {update && (
             <div className="space-y-2 border-t pt-3">
               <p className="text-xs">Version {update.version} is ready to install.</p>
-              <Button size="xs" className="w-full rounded-full cursor-pointer" onClick={update.onInstall} disabled={update.installing}>
+              <Button size="xs" className="w-full rounded-full cursor-pointer" onClick={update.onInstall} aria-disabled={update.installing}>
                 {update.installing ? <Loader2 className="animate-spin" /> : <CircleArrowDown />}
                 {update.installing ? "Updating…" : "Restart to update"}
               </Button>
