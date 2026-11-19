@@ -34,32 +34,48 @@ interface Props {
   update?: PendingUpdate;
 }
 
-// Hovering or focusing the icon opens a panel with the version details. The panel stays in
-// the DOM right after the trigger so Tab moves from the trigger into it.
+// The panel is open while the pointer is over the icon or panel, or keyboard focus is in
+// them. It stays in the DOM right after the trigger so Tab moves from the trigger into it.
 export function AppInfoButton({ align = "center", iconClassName, update }: Props) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<number | undefined>(undefined);
+  const hovered = useRef(false);
+  const focused = useRef(false);
 
-  const show = () => {
+  const sync = () => {
     window.clearTimeout(closeTimer.current);
-    setOpen(true);
-  };
-  const hide = () => {
-    closeTimer.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
+    if (hovered.current || focused.current) setOpen(true);
+    else closeTimer.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
   };
   const openOnClick = (e: React.MouseEvent) => {
     e.preventDefault(); // open, never toggle closed a panel the hover just opened
-    show();
+    window.clearTimeout(closeTimer.current);
+    setOpen(true);
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <span
         className="inline-flex"
-        onPointerEnter={show}
-        onPointerLeave={hide}
-        onFocus={show}
-        onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && hide()}
+        onPointerEnter={() => {
+          hovered.current = true;
+          sync();
+        }}
+        onPointerLeave={() => {
+          hovered.current = false;
+          sync();
+        }}
+        onFocus={(e) => {
+          // Only keyboard focus: webviews re-focus a clicked icon when the window is reactivated.
+          if (!e.target.matches(":focus-visible")) return;
+          focused.current = true;
+          sync();
+        }}
+        onBlur={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget)) return;
+          focused.current = false;
+          sync();
+        }}
       >
         <PopoverTrigger asChild onClick={openOnClick}>
           {update ? (
@@ -80,6 +96,7 @@ export function AppInfoButton({ align = "center", iconClassName, update }: Props
           className="space-y-3"
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
         >
           <InstallDetails />
           {update && (
