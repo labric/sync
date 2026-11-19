@@ -580,7 +580,7 @@ export default function Simple() {
               <Settings2Icon className="w-3 h-3" />
             </button>
           </UploadSettingsSheet>
-          <AppInfoButton align="end" className="size-5" update={pendingUpdate} />
+          <AppInfoButton align="end" iconClassName="size-5" update={pendingUpdate} />
         </div>
       </div>
 

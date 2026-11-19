@@ -32,14 +32,14 @@ export function InstallDetails() {
 
 interface Props {
   align?: "center" | "end";
-  className?: string;
+  iconClassName?: string; // sizes the bare icon; the update pill keeps its own size
   // While an update is waiting, the icon becomes a labelled pill and the panel offers the restart.
   update?: PendingUpdate;
 }
 
 // Hovering or focusing the icon opens a panel with the version details. The panel stays in
 // the DOM right after the trigger so Tab moves from the trigger into it.
-export function AppInfoButton({ align = "center", className, update }: Props) {
+export function AppInfoButton({ align = "center", iconClassName, update }: Props) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<number | undefined>(undefined);
 
@@ -68,7 +68,7 @@ export function AppInfoButton({ align = "center", className, update }: Props) {
           {update ? (
             <button
               className={cn(
-                "flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                "flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                 update.postponed ? "text-muted-foreground hover:bg-muted" : "bg-accent-foreground/10 text-accent-foreground"
               )}
             >
@@ -76,7 +76,7 @@ export function AppInfoButton({ align = "center", className, update }: Props) {
               <span>Update ready</span>
             </button>
           ) : (
-            <Button variant="ghost" size="icon-xs" className={cn("cursor-pointer", className)} aria-label="About Labric Sync">
+            <Button variant="ghost" size="icon-xs" className={iconClassName} aria-label="About Labric Sync">
               <Info />
             </Button>
           )}
