@@ -104,8 +104,8 @@ pub struct FileUploadStatus {
 
 pub type UploadQueue = Arc<Mutex<VecDeque<UploadItem>>>;
 /// Bumped, under the queue lock, each time the queue is cleared. A batch taken
-/// before the clear (from an organization the device has since left) is then
-/// neither sent nor put back.
+/// before the clear (from an organization the device has since left) still goes
+/// out with its old token, which the server refuses, and is not put back.
 pub type UploadQueueGeneration = Arc<AtomicU64>;
 pub type UploadConfigState = Arc<Mutex<UploadConfig>>;
 pub type UploadProgressState = Arc<Mutex<UploadProgress>>;
