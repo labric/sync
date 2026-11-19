@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { clearToken, getToken, CustomJwtPayload } from "@/lib/store";
+import { getToken, signOut, CustomJwtPayload } from "@/lib/store";
 import { useEffect, useState } from "react";
 
 export function OrganizationButton() {
@@ -27,7 +27,7 @@ export function OrganizationButton() {
   }, []);
 
   const handleSignOut = async () => {
-    await clearToken();
+    await signOut();
     router.navigate({ to: "/login" });
   };
 

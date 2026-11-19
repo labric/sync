@@ -95,8 +95,22 @@ export async function getTokenRejection(): Promise<TokenRejection | null> {
   return get<TokenRejection | null>(TOKEN_REJECTED_KEY, null);
 }
 
-export async function clearTokenRejection() {
+// Holds the organization of the token cleared by Sign out until the device is paired again.
+const SIGNED_OUT_KEY = "signed_out";
+
+export async function signOut() {
+  const token = await getToken();
+  await set<TokenRejection>(SIGNED_OUT_KEY, { org_id: token?.org_id ?? null });
+  await clearToken();
+}
+
+export async function getSignOut(): Promise<TokenRejection | null> {
+  return get<TokenRejection | null>(SIGNED_OUT_KEY, null);
+}
+
+export async function clearPreviousPairing() {
   await store.delete(TOKEN_REJECTED_KEY);
+  await store.delete(SIGNED_OUT_KEY);
 }
 
 const INSTALL_KEY = "install";
