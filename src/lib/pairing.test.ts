@@ -36,3 +36,7 @@ test('a rejected token is compared as before', () => {
 test('an earlier token without an organization never matches', () => {
   assert.equal(pairsElsewhere('org_a', null, { org_id: null }), true);
 });
+
+test('a new token without a readable organization never matches', () => {
+  assert.equal(pairsElsewhere(undefined, null, { org_id: 'org_a' }), true);
+});
