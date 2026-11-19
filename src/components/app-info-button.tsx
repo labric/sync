@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useInstallRecord } from "@/hooks/useInstallRecord";
 import { describeInstall } from "@/lib/install-record";
-import { cn } from "@/lib/utils";
 
 export interface PendingUpdate {
   version: string;
@@ -63,12 +62,12 @@ export function AppInfoButton({ align = "center", iconClassName, update }: Props
       >
         <PopoverTrigger asChild onClick={openOnClick}>
           {update ? (
-            <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs bg-accent-foreground/10 text-accent-foreground cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs bg-accent-foreground/10 text-accent-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
               <CircleArrowDown className="size-3" />
               <span>Update ready</span>
             </button>
           ) : (
-            <Button variant="ghost" size="icon-xs" className={cn("cursor-pointer", iconClassName)} aria-label="About Labric Sync">
+            <Button variant="ghost" size="icon-xs" className={iconClassName} aria-label="About Labric Sync">
               <Info />
             </Button>
           )}
