@@ -1,5 +1,6 @@
 import { Outlet, useRouter, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { getToken } from "@/lib/store";
 import { OrganizationButton } from "@/components/organization-button";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
@@ -15,6 +16,17 @@ function ProtectedLayout() {
   
   // Start heartbeat service when component mounts
   useHeartbeat("/api/sync/heartbeat");
+
+  // The Rust side has already cleared the token the server rejected
+  useEffect(() => {
+    const unlisten = listen("token_rejected", () => {
+      setIsAuthenticated(false);
+      router.navigate({ to: "/login" });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [router]);
 
   useEffect(() => {
     const checkAuth = async () => {

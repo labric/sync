@@ -2445,7 +2445,7 @@ dependencies = [
 
 [[package]]
 name = "labric-sync"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -2454,6 +2454,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "glob",
+ "http 0.2.12",
  "log",
  "machine-uid",
  "mime_guess",

@@ -83,6 +83,22 @@ export async function clearOrganizationId() {
   await store.delete(ORG_ID_KEY);
 }
 
+// Written by the Rust side (sync_token.rs) when the server rejects the
+// device's token; holds that token's organization until the device is paired again.
+const TOKEN_REJECTED_KEY = "token_rejected";
+
+export interface TokenRejection {
+  org_id: string | null;
+}
+
+export async function getTokenRejection(): Promise<TokenRejection | null> {
+  return get<TokenRejection | null>(TOKEN_REJECTED_KEY, null);
+}
+
+export async function clearTokenRejection() {
+  await store.delete(TOKEN_REJECTED_KEY);
+}
+
 const INSTALL_KEY = "install";
 
 export async function recordInstall(version: string): Promise<InstallRecord> {

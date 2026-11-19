@@ -6,6 +6,7 @@ use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
@@ -15,7 +16,7 @@ use tokio::time::sleep;
 
 use futures::stream::{self, StreamExt};
 
-use crate::http_client::{check_response, SharedHttpClient};
+use crate::http_client::{check_response, check_sync_response, SharedHttpClient};
 use crate::{EVENT_TYPE_INITIAL, EVENT_TYPE_MODIFIED};
 
 // Upload processing constants
@@ -102,6 +103,10 @@ pub struct FileUploadStatus {
 }
 
 pub type UploadQueue = Arc<Mutex<VecDeque<UploadItem>>>;
+/// Bumped, under the queue lock, each time the queue is cleared. A batch taken
+/// before the clear (from an organization the device has since left) still goes
+/// out with its old token, which the server refuses, and is not put back.
+pub type UploadQueueGeneration = Arc<AtomicU64>;
 pub type UploadConfigState = Arc<Mutex<UploadConfig>>;
 pub type UploadProgressState = Arc<Mutex<UploadProgress>>;
 // Latest status per relative path, in first-seen order so the oldest entries
@@ -450,6 +455,7 @@ async fn get_presigned_urls_batch(
     prepared: &[(PreparedUpload, FileCheckItem)],
     config: &UploadConfig,
     session_context: &SessionContext,
+    token: &str,
     client: &SharedHttpClient,
     app_handle: &AppHandle,
 ) -> Result<Vec<FileCheckResult>, String> {
@@ -473,7 +479,6 @@ async fn get_presigned_urls_batch(
         })
         .collect();
 
-    let token = get_auth_token(app_handle)?;
     let batch_url = format!("{}/api/sync/upload-urls", config.server_url);
 
     debug!(
@@ -483,22 +488,20 @@ async fn get_presigned_urls_batch(
     );
 
     let (active_user_id, active_metadata) = session_context.active_fields();
-    let mut request = client.post(&batch_url).json(&GetPresignedBatchBody {
-        files: file_check_items,
-        session_user_id: active_user_id.cloned(),
-        session_metadata: active_metadata.cloned(),
-    });
-
-    if let Some(token_str) = &token {
-        request = request.header("Authorization", format!("Bearer {token_str}"));
-    }
-
-    let response = request
+    let response = client
+        .post(&batch_url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&GetPresignedBatchBody {
+            files: file_check_items,
+            session_user_id: active_user_id.cloned(),
+            session_metadata: active_metadata.cloned(),
+        })
         .send()
         .await
         .map_err(|e| format!("Failed to send batch presigned request: {e}"))?;
 
-    let response = check_response(response, "Batch presigned request").await?;
+    let response =
+        check_sync_response(response, "Batch presigned request", token, app_handle).await?;
 
     let batch_response: GetPresignedBatchResponse = response
         .json()
@@ -565,27 +568,26 @@ async fn upload_file_put(
 async fn update_file_metadata(
     file_id: &str,
     config: &UploadConfig,
+    token: &str,
     client: &SharedHttpClient,
     app_handle: &AppHandle,
 ) -> Result<(), String> {
-    let token = get_auth_token(app_handle)?;
     let metadata_url = format!("{}/api/sync/{}/confirm-upload", config.server_url, file_id);
 
     debug!("Sending metadata update request to: {metadata_url}");
 
-    let mut request = client.post(&metadata_url);
-    if let Some(token_str) = &token {
-        request = request.header("Authorization", format!("Bearer {token_str}"));
-    }
-
-    let response = request
+    let response = client
+        .post(&metadata_url)
+        .header("Authorization", format!("Bearer {token}"))
         .send()
         .await
         .map_err(|e| format!("Failed to send metadata update for file ID '{file_id}': {e}"))?;
 
-    check_response(
+    check_sync_response(
         response,
         &format!("Metadata update for file ID '{file_id}'"),
+        token,
+        app_handle,
     )
     .await?;
 
@@ -619,6 +621,50 @@ fn collect_ready_items(queue: &mut VecDeque<UploadItem>, delay_ms: u64) -> Vec<U
     ready
 }
 
+struct Batch {
+    generation: u64,
+    token: String,
+    items: Vec<UploadItem>,
+}
+
+/// Takes the next ready batch along with the token it must be sent with.
+/// Takes nothing while there is no token, so uploads pause until the device is
+/// paired again and the queue is kept.
+fn take_batch(
+    queue: &UploadQueue,
+    generation: &UploadQueueGeneration,
+    token: Option<String>,
+    delay_ms: u64,
+) -> Option<Batch> {
+    let token = token?;
+    let mut queue = queue.lock();
+    let items = collect_ready_items(&mut queue, delay_ms);
+    (!items.is_empty()).then(|| Batch {
+        generation: generation.load(Ordering::SeqCst),
+        token,
+        items,
+    })
+}
+
+/// Puts items back on the queue, unless it was cleared after their batch was taken.
+fn requeue(
+    queue: &UploadQueue,
+    generation: &UploadQueueGeneration,
+    batch_generation: u64,
+    items: impl IntoIterator<Item = UploadItem>,
+) {
+    let mut queue = queue.lock();
+    if generation.load(Ordering::SeqCst) == batch_generation {
+        queue.extend(items);
+    }
+}
+
+fn clear_queue(queue: &UploadQueue, generation: &UploadQueueGeneration) {
+    let mut queue = queue.lock();
+    generation.fetch_add(1, Ordering::SeqCst);
+    queue.clear();
+}
+
 fn emit_progress(
     upload_progress: &UploadProgressState,
     upload_queue: &UploadQueue,
@@ -631,6 +677,7 @@ fn emit_progress(
 
 pub async fn process_upload_queue(
     upload_queue: UploadQueue,
+    queue_generation: UploadQueueGeneration,
     upload_config: UploadConfigState,
     upload_progress: UploadProgressState,
     session_context_state: SessionContextState,
@@ -654,15 +701,13 @@ pub async fn process_upload_queue(
             last_max_concurrent = config.max_concurrent_uploads;
         }
 
-        let ready_items = {
-            let mut queue = upload_queue.lock();
-            collect_ready_items(&mut queue, config.upload_delay_ms)
-        };
-
-        if ready_items.is_empty() {
+        let token = get_auth_token(&app_handle).ok().flatten();
+        let Some(batch) = take_batch(&upload_queue, &queue_generation, token, config.upload_delay_ms)
+        else {
             sleep(QUEUE_POLL_INTERVAL).await;
             continue;
-        }
+        };
+        let ready_items = batch.items.clone();
 
         // Mark all drained items as in-flight immediately
         let ready_count = ready_items.len();
@@ -687,7 +732,7 @@ pub async fn process_upload_queue(
         // Get presigned URLs for the batch (read session context at request time)
         let session_context = session_context_state.lock().clone();
         let batch_results =
-            match get_presigned_urls_batch(&prepared, &config, &session_context, &http_client, &app_handle).await {
+            match get_presigned_urls_batch(&prepared, &config, &session_context, &batch.token, &http_client, &app_handle).await {
                 Ok(results) => results,
                 Err(e) => {
                     error!("Batch presigned request failed: {e}");
@@ -696,12 +741,7 @@ pub async fn process_upload_queue(
                         progress.in_flight = progress.in_flight.saturating_sub(prepared_count);
                         let _ = app_handle.emit("upload_progress", &*progress);
                     }
-                    {
-                        let mut queue = upload_queue.lock();
-                        for item in ready_items {
-                            queue.push_back(item);
-                        }
-                    }
+                    requeue(&upload_queue, &queue_generation, batch.generation, ready_items);
                     sleep(RETRY_DELAY).await;
                     continue;
                 }
@@ -766,9 +806,12 @@ pub async fn process_upload_queue(
                         let mut progress = upload_progress.lock();
                         progress.in_flight = progress.in_flight.saturating_sub(1);
                     }
-                    upload_queue
-                        .lock()
-                        .push_back(prepared.item.clone());
+                    requeue(
+                        &upload_queue,
+                        &queue_generation,
+                        batch.generation,
+                        [prepared.item.clone()],
+                    );
                     emit_progress(&upload_progress, &upload_queue, &app_handle);
                     continue;
                 }
@@ -780,6 +823,9 @@ pub async fn process_upload_queue(
             let client_clone = http_client.clone();
             let app_clone = app_handle.clone();
             let queue_clone = upload_queue.clone();
+            let generation_clone = queue_generation.clone();
+            let batch_generation = batch.generation;
+            let token = batch.token.clone();
             let progress_clone = upload_progress.clone();
             let file_id = result.file_id.clone();
             let mut item = prepared.item.clone();
@@ -807,6 +853,7 @@ pub async fn process_upload_queue(
                         if let Err(e) = update_file_metadata(
                             &file_id,
                             &config_clone,
+                            &token,
                             &client_clone,
                             &app_clone,
                         )
@@ -850,7 +897,7 @@ pub async fn process_upload_queue(
                                 item.relative_path, item.retry_count, MAX_RETRY_COUNT, e
                             );
                             item.timestamp = now_millis();
-                            queue_clone.lock().push_back(item);
+                            requeue(&queue_clone, &generation_clone, batch_generation, [item]);
                         } else {
                             error!(
                                 "Upload permanently failed for '{}' after {} attempts: {}",
@@ -937,8 +984,11 @@ pub fn get_upload_progress(
 }
 
 #[tauri::command]
-pub fn clear_upload_queue(upload_queue: tauri::State<'_, UploadQueue>) -> Result<String, String> {
-    upload_queue.lock().clear();
+pub fn clear_upload_queue(
+    upload_queue: tauri::State<'_, UploadQueue>,
+    queue_generation: tauri::State<'_, UploadQueueGeneration>,
+) -> Result<String, String> {
+    clear_queue(&upload_queue, &queue_generation);
     Ok("Upload queue cleared".to_string())
 }
 
@@ -1074,7 +1124,8 @@ pub async fn get_org_members(
         .await
         .map_err(|e| format!("Failed to fetch org members: {e}"))?;
 
-    let response = check_response(response, "Get org members").await?;
+    let response =
+        check_sync_response(response, "Get org members", &token, &app_handle).await?;
 
     let body: OrgMembersResponse = response
         .json()
@@ -1082,4 +1133,61 @@ pub async fn get_org_members(
         .map_err(|e| format!("Failed to parse org members response: {e}"))?;
 
     Ok(body.members)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queue_of(paths: &[&str]) -> UploadQueue {
+        Arc::new(Mutex::new(
+            paths
+                .iter()
+                .map(|path| UploadItem {
+                    path: path.to_string(),
+                    relative_path: path.to_string(),
+                    timestamp: 0,
+                    retry_count: 0,
+                })
+                .collect(),
+        ))
+    }
+
+    fn paths(queue: &UploadQueue) -> Vec<String> {
+        queue.lock().iter().map(|item| item.path.clone()).collect()
+    }
+
+    #[test]
+    fn nothing_is_taken_while_there_is_no_token() {
+        let queue = queue_of(&["a", "b"]);
+        let generation = UploadQueueGeneration::default();
+
+        assert!(take_batch(&queue, &generation, None, 0).is_none());
+        assert_eq!(paths(&queue), ["a", "b"]);
+    }
+
+    // The batch's request fails after signIn cleared the queue; putting it
+    // back would send it with the new organization's token on the next pass.
+    #[test]
+    fn a_failed_batch_is_not_put_back_after_the_queue_is_cleared() {
+        let queue = queue_of(&["a", "b"]);
+        let generation = UploadQueueGeneration::default();
+        let batch = take_batch(&queue, &generation, Some("old".to_string()), 0).unwrap();
+
+        clear_queue(&queue, &generation);
+        requeue(&queue, &generation, batch.generation, batch.items);
+
+        assert!(paths(&queue).is_empty());
+    }
+
+    #[test]
+    fn a_failed_batch_is_put_back_while_the_queue_is_unchanged() {
+        let queue = queue_of(&["a", "b"]);
+        let generation = UploadQueueGeneration::default();
+        let batch = take_batch(&queue, &generation, Some("old".to_string()), 0).unwrap();
+
+        requeue(&queue, &generation, batch.generation, batch.items);
+
+        assert_eq!(paths(&queue), ["a", "b"]);
+    }
 }
