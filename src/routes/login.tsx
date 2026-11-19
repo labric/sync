@@ -22,7 +22,7 @@ import {
 import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
 import { AppInfoButton } from '@/components/app-info-button'
 import { usePendingUpdate } from '@/hooks/useAppUpdater'
-import { type PairCodeResponse, pairsElsewhere, pollPairingBody } from '@/lib/pairing'
+import { type PairCodeResponse, pollPairingBody } from '@/lib/pairing'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -279,9 +279,11 @@ function Login() {
   };
 
   const signIn = async (token: string, organizationId?: string) => {
+    // A token still stored here has expired, so it is the previous one too.
+    const previous = (await getTokenRejection()) ?? (await getSignOut()) ?? (await getToken());
     // Pairing to another organization drops the old folder, queue and session
     // user before the new token is stored, so none of it reaches the new one.
-    if (pairsElsewhere(tokenOrgId(token), await getTokenRejection(), await getSignOut())) {
+    if (previous && previous.org_id !== tokenOrgId(token)) {
       await invoke('stop_watching');
       await invoke('clear_upload_queue');
       await invoke('clear_session_context');

@@ -1,7 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import { jwtDecode, JwtPayload } from "jwt-decode";
 import { type InstallRecord, nextInstallRecord } from "./install-record";
-import type { PreviousPairing } from "./pairing";
 
 // Custom JWT payload interface for our application
 export interface CustomJwtPayload extends JwtPayload {
@@ -88,8 +87,12 @@ export async function clearOrganizationId() {
 // device's token; holds that token's organization until the device is paired again.
 const TOKEN_REJECTED_KEY = "token_rejected";
 
-export async function getTokenRejection(): Promise<PreviousPairing | null> {
-  return get<PreviousPairing | null>(TOKEN_REJECTED_KEY, null);
+export interface TokenRejection {
+  org_id: string | null;
+}
+
+export async function getTokenRejection(): Promise<TokenRejection | null> {
+  return get<TokenRejection | null>(TOKEN_REJECTED_KEY, null);
 }
 
 // Holds the organization of the token cleared by Sign out until the device is paired again.
@@ -97,12 +100,12 @@ const SIGNED_OUT_KEY = "signed_out";
 
 export async function signOut() {
   const token = await getToken();
-  await set<PreviousPairing>(SIGNED_OUT_KEY, { org_id: token?.org_id ?? null });
+  await set<TokenRejection>(SIGNED_OUT_KEY, { org_id: token?.org_id ?? null });
   await clearToken();
 }
 
-export async function getSignOut(): Promise<PreviousPairing | null> {
-  return get<PreviousPairing | null>(SIGNED_OUT_KEY, null);
+export async function getSignOut(): Promise<TokenRejection | null> {
+  return get<TokenRejection | null>(SIGNED_OUT_KEY, null);
 }
 
 export async function clearPreviousPairing() {
