@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { CircleArrowDown } from "lucide-react";
+import { CircleArrowDown, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useInstallRecord } from "@/hooks/useInstallRecord";
 import { describeInstall } from "@/lib/install-record";
+import { cn } from "@/lib/utils";
 
 export interface PendingUpdate {
   version: string;
@@ -28,16 +29,16 @@ export function InstallDetails() {
 
 interface Props {
   align?: "center" | "end";
+  className?: string;
+  // While an update is waiting, the icon becomes a labelled pill and the panel offers the restart.
   update?: PendingUpdate;
 }
 
-// Shown only while an update is waiting. Hovering or focusing it opens a panel with the
-// version details and the restart; the panel stays in the DOM right after the trigger so
-// Tab moves from the trigger to the restart button.
-export function AppInfoButton({ align = "center", update }: Props) {
+// Hovering or focusing the icon opens a panel with the version details. The panel stays in
+// the DOM right after the trigger so Tab moves from the trigger into it.
+export function AppInfoButton({ align = "center", className, update }: Props) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<number | undefined>(undefined);
-  if (!update) return null;
 
   const show = () => {
     window.clearTimeout(closeTimer.current);
@@ -45,6 +46,10 @@ export function AppInfoButton({ align = "center", update }: Props) {
   };
   const hide = () => {
     closeTimer.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
+  };
+  const openOnClick = (e: React.MouseEvent) => {
+    e.preventDefault(); // open, never toggle closed a panel the hover just opened
+    show();
   };
 
   return (
@@ -56,17 +61,17 @@ export function AppInfoButton({ align = "center", update }: Props) {
         onFocus={show}
         onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && hide()}
       >
-        <PopoverTrigger asChild>
-          <button
-            onClick={(e) => {
-              e.preventDefault(); // open, never toggle closed a panel the hover just opened
-              show();
-            }}
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs bg-accent-foreground/10 text-accent-foreground cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <CircleArrowDown className="size-3" />
-            <span>Update ready</span>
-          </button>
+        <PopoverTrigger asChild onClick={openOnClick}>
+          {update ? (
+            <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs bg-accent-foreground/10 text-accent-foreground cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+              <CircleArrowDown className="size-3" />
+              <span>Update ready</span>
+            </button>
+          ) : (
+            <Button variant="ghost" size="icon-xs" className={cn("cursor-pointer", className)} aria-label="About Labric Sync">
+              <Info />
+            </Button>
+          )}
         </PopoverTrigger>
         <PopoverContent
           portal={false}
@@ -77,13 +82,15 @@ export function AppInfoButton({ align = "center", update }: Props) {
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
           <InstallDetails />
-          <div className="space-y-2 border-t pt-3">
-            <p className="text-xs">Version {update.version} is ready to install.</p>
-            <Button size="xs" className="w-full rounded-full cursor-pointer" onClick={update.onInstall}>
-              <CircleArrowDown />
-              Restart to update
-            </Button>
-          </div>
+          {update && (
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-xs">Version {update.version} is ready to install.</p>
+              <Button size="xs" className="w-full rounded-full cursor-pointer" onClick={update.onInstall}>
+                <CircleArrowDown />
+                Restart to update
+              </Button>
+            </div>
+          )}
         </PopoverContent>
       </span>
     </Popover>
