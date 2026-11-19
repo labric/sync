@@ -19,6 +19,7 @@ import {
   clearTokenRejection,
 } from '@/lib/store'
 import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
+import { AppInfoButton } from '@/components/app-info-button'
 import { type PairCodeResponse, pollPairingBody } from '@/lib/pairing'
 
 export const Route = createFileRoute('/login')({
@@ -349,6 +350,7 @@ function Login() {
             Run network diagnostic
           </Button>
         )}
+        <AppInfoButton />
       </div>
       <NetworkDiagnosticSheet
         open={diagnosticOpen}
