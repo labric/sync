@@ -84,3 +84,14 @@ test('the app info button shows a ready, postponed, installing or failed update 
   assert.deepEqual(pendingUpdate(installing), { version: '0.3.0', installing: true });
   assert.deepEqual(pendingUpdate(updateReducer(installing, { type: 'installFailed' })), { version: '0.3.0', installing: false });
 });
+
+test('a newer version replaces an update whose install failed, so a fixed release is picked up', () => {
+  const failed = run(
+    { type: 'found', version: '0.3.0' },
+    { type: 'downloaded', version: '0.3.0' },
+    { type: 'installStarted' },
+    { type: 'installFailed' }
+  );
+  assert.equal(updateReducer(failed, { type: 'found', version: '0.3.0' }), failed);
+  assert.deepEqual(updateReducer(failed, { type: 'found', version: '0.3.1' }), { status: 'downloading', version: '0.3.1' });
+});

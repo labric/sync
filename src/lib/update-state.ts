@@ -15,8 +15,11 @@ export const initialUpdateState: UpdateState = { status: 'none' };
 export function updateReducer(state: UpdateState, event: UpdateEvent): UpdateState {
   switch (event.type) {
     case 'found':
-      // Only one update is held at a time; a newer one is found again after the relaunch.
-      return state.status === 'none' ? { status: 'downloading', version: event.version } : state;
+      // Only one update is held at a time; a newer one is found again after the relaunch. An
+      // update whose install failed gives way to a newer one, which may be the fix.
+      return state.status === 'none' || (state.status === 'failed' && state.version !== event.version)
+        ? { status: 'downloading', version: event.version }
+        : state;
     case 'downloaded':
       return state.status === 'downloading' && state.version === event.version
         ? { status: 'ready', version: event.version }

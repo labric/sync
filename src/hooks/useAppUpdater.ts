@@ -13,6 +13,8 @@ import {
 import type { PendingUpdate } from '@/components/app-info-button';
 
 const TOAST_ID = 'update-notification';
+// A hung download would otherwise block every later check until the app restarts.
+const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 let state: UpdateState = initialUpdateState;
 let downloadedUpdate: Update | null = null;
@@ -45,13 +47,14 @@ async function checkForUpdate() {
   }
 
   try {
-    await update.download();
+    await update.download(undefined, { timeout: DOWNLOAD_TIMEOUT_MS });
   } catch (error) {
     console.error('Failed to download update:', error);
     dispatch({ type: 'downloadFailed', version: update.version });
     await update.close();
     return;
   }
+  await downloadedUpdate?.close();
   downloadedUpdate = update;
   dispatch({ type: 'downloaded', version: update.version });
 
@@ -67,17 +70,25 @@ async function checkForUpdate() {
 }
 
 async function installUpdate() {
+  const update = downloadedUpdate;
+  if (!update) return;
   const before = state;
   dispatch({ type: 'installStarted' });
-  if (state === before || !downloadedUpdate) return;
+  if (state === before) return;
   toast.dismiss(TOAST_ID);
   try {
-    await downloadedUpdate.install();
-    await relaunch();
+    await update.install();
   } catch (error) {
     console.error('Failed to install update:', error);
     dispatch({ type: 'installFailed' });
     toast.error('Failed to install update', { description: 'Try again from "Update ready".' });
+    return;
+  }
+  try {
+    await relaunch();
+  } catch (error) {
+    console.error('Failed to relaunch after installing the update:', error);
+    toast.error('Update installed', { description: 'Quit and reopen Labric Sync to finish.' });
   }
 }
 
