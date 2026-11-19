@@ -42,6 +42,7 @@ import { useUploadManager } from "@/hooks/useUploadManager";
 import { useSessionContext } from "@/hooks/use-session-context";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
+import { AppInfoButton } from "./app-info-button";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 import { deviceStatusDisplay, syncProgressDisplay } from "@/lib/device-status";
 
@@ -553,7 +554,7 @@ export default function Simple() {
           )}
           <SessionContextSheet>
             {sessionActive ? (
-              <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent-foreground/10 text-accent-foreground text-xs">
+              <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent-foreground/10 text-accent-foreground text-xs cursor-pointer">
                 <UserIcon className="w-3 h-3" />
                 <span>Session active</span>
                 {sessionTimeRemaining != null && (
@@ -567,16 +568,17 @@ export default function Simple() {
                 )}
               </button>
             ) : (
-              <button className="hover:bg-muted p-1 rounded">
+              <button className="hover:bg-muted p-1 rounded cursor-pointer">
                 <UserIcon className="w-3 h-3" />
               </button>
             )}
           </SessionContextSheet>
           <UploadSettingsSheet>
-            <button className="hover:bg-muted p-1 rounded">
+            <button className="hover:bg-muted p-1 rounded cursor-pointer">
               <Settings2Icon className="w-3 h-3" />
             </button>
           </UploadSettingsSheet>
+          <AppInfoButton align="end" iconClassName="size-5" />
         </div>
       </div>
 
