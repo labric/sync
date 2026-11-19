@@ -39,5 +39,5 @@ export function updateReducer(state: UpdateState, event: UpdateEvent): UpdateSta
 // What the app info button shows; undefined while there is nothing to install.
 export function pendingUpdate(state: UpdateState) {
   if (state.status === 'none' || state.status === 'downloading') return undefined;
-  return { version: state.version, postponed: state.status === 'postponed', installing: state.status === 'installing' };
+  return { version: state.version, installing: state.status === 'installing' };
 }

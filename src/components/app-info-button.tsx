@@ -4,12 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useInstallRecord } from "@/hooks/useInstallRecord";
 import { describeInstall } from "@/lib/install-record";
-import { cn } from "@/lib/utils";
 
 export interface PendingUpdate {
   version: string;
-  // After "Later" on the update toast the pill stays, but muted.
-  postponed?: boolean;
   installing?: boolean;
   onInstall: () => void;
 }
@@ -66,12 +63,7 @@ export function AppInfoButton({ align = "center", iconClassName, update }: Props
       >
         <PopoverTrigger asChild onClick={openOnClick}>
           {update ? (
-            <button
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                update.postponed ? "text-muted-foreground hover:bg-muted" : "bg-accent-foreground/10 text-accent-foreground"
-              )}
-            >
+            <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs bg-accent-foreground/10 text-accent-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
               <CircleArrowDown className="size-3" />
               <span>Update ready</span>
             </button>
