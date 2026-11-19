@@ -11,6 +11,7 @@ import logo from '@/assets/logo.svg'
 import { getToken, setToken, getOrganizationId, setOrganizationId } from '@/lib/store'
 import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
 import { AppInfoButton } from '@/components/app-info-button'
+import { usePendingUpdate } from '@/hooks/useAppUpdater'
 import { type PairCodeResponse, pollPairingBody } from '@/lib/pairing'
 
 export const Route = createFileRoute('/login')({
@@ -75,6 +76,7 @@ function Login() {
   const pairingSecretRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
+  const pendingUpdate = usePendingUpdate();
 
   // Check if already signed in and redirect
   useEffect(() => {
@@ -316,7 +318,7 @@ function Login() {
             Run network diagnostic
           </Button>
         )}
-        <AppInfoButton />
+        <AppInfoButton update={pendingUpdate} />
       </div>
       <NetworkDiagnosticSheet
         open={diagnosticOpen}
